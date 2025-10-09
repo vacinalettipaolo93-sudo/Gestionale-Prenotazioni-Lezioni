@@ -88,7 +88,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ selection, onBookingConfirmed
   today.setHours(0, 0, 0, 0);
 
   return (
-    // ... UI identica a prima
+    // ... Qui mantieni la tua UI identica a prima!
   );
 };
 

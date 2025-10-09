@@ -15,6 +15,7 @@ import { useBookings } from './hooks/useBookings';
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
   const { sports } = useSports();
   const { workingHours, updateWorkingHours } = useWorkingHours();
   const { consultant, updateConsultant } = useConsultant();
@@ -112,6 +113,7 @@ const App: React.FC = () => {
             consultant={consultant!}
             updateWorkingHours={updateWorkingHours}
             updateConsultant={updateConsultant}
+            onLogout={handleLogout}
           />
         ) : (
           renderUserContent()

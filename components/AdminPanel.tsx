@@ -63,7 +63,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (parts[0] === 'sport-color') await updateSport(parts[1], { color: String(editingValue) });
     if (parts[0] === 'lesson-name') await updateLessonType(parts[1], parts[2], { name: String(editingValue) });
     if (parts[0] === 'lesson-desc') await updateLessonType(parts[1], parts[2], { description: String(editingValue) });
-    if (parts[0] === 'option-duration') await addOption(parts[1], parts[2], { duration: Number(editingValue) }); // solo aggiunta
     if (parts[0] === 'location-name') await updateLocation(parts[1], parts[2], parts[3], { name: String(editingValue) });
     if (parts[0] === 'location-address') await updateLocation(parts[1], parts[2], parts[3], { address: String(editingValue) });
     cancelEditing();

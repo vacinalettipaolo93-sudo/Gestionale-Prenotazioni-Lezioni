@@ -5,7 +5,7 @@ export interface Location {
 }
 
 export interface LessonOption {
-  duration: number; // in minutes
+  duration: number;
 }
 
 export interface LessonType {
