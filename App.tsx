@@ -12,6 +12,13 @@ import { useWorkingHours } from './hooks/useWorkingHours';
 import { useConsultant } from './hooks/useConsultant';
 import { useBookings } from './hooks/useBookings';
 
+const defaultConsultant = {
+  name: '',
+  title: '',
+  avatarUrl: '',
+  welcomeMessage: ''
+};
+
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -62,7 +69,7 @@ const App: React.FC = () => {
           <ConfirmationPage
             booking={confirmedBooking!}
             selection={selection!}
-            consultant={consultant!}
+            consultant={consultant ?? defaultConsultant}
             onBookAnother={handleBookAnother}
           />
         );
@@ -74,7 +81,7 @@ const App: React.FC = () => {
             onBack={handleBackToSelection}
             workingHours={workingHours}
             slotInterval={slotInterval}
-            consultant={consultant!}
+            consultant={consultant ?? defaultConsultant}
             bookings={bookings}
           />
         );
@@ -84,7 +91,7 @@ const App: React.FC = () => {
           <EventTypeSelection
             sports={sports}
             onSelectionComplete={handleSelectionComplete}
-            consultant={consultant!}
+            consultant={consultant ?? defaultConsultant}
           />
         );
     }
@@ -110,7 +117,7 @@ const App: React.FC = () => {
             workingHours={workingHours}
             slotInterval={slotInterval}
             setSlotInterval={setSlotInterval}
-            consultant={consultant!}
+            consultant={consultant ?? defaultConsultant}
             updateWorkingHours={updateWorkingHours}
             updateConsultant={updateConsultant}
             onLogout={handleLogout}
