@@ -1,0 +1,5 @@
+{
+  "name": "Gestione Prenotazioni Lezioni",
+  "description": "Un'applicazione web per la gestione delle prenotazioni di lezioni, simile a Calendly. Permette agli utenti di visualizzare le disponibilità, scegliere un tipo di lezione e prenotare una fascia oraria. Pronta per l'integrazione con Firebase per dati in tempo reale.",
+  "requestFramePermissions": []
+}
