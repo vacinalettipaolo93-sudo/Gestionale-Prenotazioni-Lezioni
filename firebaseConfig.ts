@@ -13,10 +13,9 @@ const firebaseConfig = {
   appId: "1:437487120297:web:30895af62079b5301a1eb8"
 };
 
-// Initialize Firebase, check if it's already initialized
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
+// Initialize Firebase. The check for existing apps is mainly for HMR during development.
+// For a production build, initializing directly is safe and can avoid bundler issues.
+firebase.initializeApp(firebaseConfig);
 
 // Get and export the Firestore instance
 export const db = firebase.firestore();
