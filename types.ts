@@ -71,4 +71,5 @@ export interface AppConfig {
   consultantInfo: ConsultantInfo;
   workingHours: WorkingHours;
   dateOverrides: DateOverrides;
+  slotInterval: number;
 }

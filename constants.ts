@@ -91,3 +91,5 @@ export const INITIAL_WORKING_HOURS: WorkingHours = {
 };
 
 export const INITIAL_DATE_OVERRIDES: DateOverrides = {};
+
+export const INITIAL_SLOT_INTERVAL = 30; // Default slot interval in minutes

@@ -6,7 +6,7 @@ import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import { CogIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
-import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES } from './constants';
+import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL } from './constants';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
 import { db } from './firebaseConfig';
 
@@ -30,7 +30,7 @@ function App() {
   const [workingHours, setWorkingHours] = useState<WorkingHours>({});
   const [dateOverrides, setDateOverrides] = useState<DateOverrides>({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
-  const [slotInterval, setSlotInterval] = useState(30); // Default slot interval
+  const [slotInterval, setSlotInterval] = useState(INITIAL_SLOT_INTERVAL);
 
   // Auth state
   const [isGoogleSignedIn, setIsGoogleSignedIn] = useState(false);
@@ -53,6 +53,7 @@ function App() {
         setConsultantInfo(data.consultantInfo);
         setWorkingHours(data.workingHours);
         setDateOverrides(data.dateOverrides);
+        setSlotInterval(data.slotInterval || INITIAL_SLOT_INTERVAL);
       } else {
         // First run: Initialize the config document in Firestore
         console.log("Configuration document not found. Initializing...");
@@ -61,6 +62,7 @@ function App() {
           consultantInfo: INITIAL_CONSULTANT_INFO,
           workingHours: INITIAL_WORKING_HOURS,
           dateOverrides: INITIAL_DATE_OVERRIDES,
+          slotInterval: INITIAL_SLOT_INTERVAL,
         };
         try {
           await configRef.set(initialConfig);
@@ -87,7 +89,6 @@ function App() {
     script.src = 'https://apis.google.com/js/api.js';
     script.onload = () => {
       gapi.load('client', initializeGapiClient);
-      setGapiLoaded(true);
     };
     document.body.appendChild(script);
 
@@ -114,6 +115,7 @@ function App() {
         apiKey: API_KEY,
         discoveryDocs: DISCOVERY_DOCS,
       });
+      setGapiLoaded(true); // GAPI is now fully loaded and initialized
     } catch (error: any) {
         console.error("Error initializing Google API client:", error);
         if (error.result?.error?.message) {
@@ -142,6 +144,13 @@ function App() {
               if (tokenResponse && tokenResponse.access_token) {
                   gapi.client.setToken(tokenResponse);
                   setIsGoogleSignedIn(true);
+
+                  // Persist the token in localStorage
+                  const expires_at = Date.now() + (tokenResponse.expires_in * 1000);
+                  localStorage.setItem('googleAuthToken', JSON.stringify({
+                      ...tokenResponse,
+                      expires_at
+                  }));
               }
           },
         });
@@ -155,9 +164,22 @@ function App() {
     }
   }, []);
   
+  // Effect to initialize GIS and check for a stored token
   useEffect(() => {
     if (gapiLoaded && gisLoaded) {
-      initializeGisClient();
+        initializeGisClient();
+        
+        // Check for persisted token once GAPI is ready
+        const storedToken = localStorage.getItem('googleAuthToken');
+        if (storedToken) {
+            const tokenData = JSON.parse(storedToken);
+            if (tokenData.expires_at > Date.now()) {
+                gapi.client.setToken(tokenData);
+                setIsGoogleSignedIn(true);
+            } else {
+                localStorage.removeItem('googleAuthToken'); // Clean up expired token
+            }
+        }
     }
   }, [gapiLoaded, gisLoaded, initializeGisClient]);
 
@@ -174,6 +196,7 @@ function App() {
       window.google.accounts.oauth2.revoke(token.access_token, () => {
         gapi.client.setToken('');
         setIsGoogleSignedIn(false);
+        localStorage.removeItem('googleAuthToken');
       });
     }
   };
@@ -249,6 +272,16 @@ function App() {
       alert("Errore nel salvataggio del profilo.");
     }
   }
+
+  const handleSaveSlotInterval = async (newInterval: number) => {
+    try {
+      await db.collection('configuration').doc('main').update({ slotInterval: newInterval });
+      alert('Intervallo di prenotazione aggiornato!');
+    } catch (error) {
+      console.error("Error saving slot interval:", error);
+      alert("Errore nel salvataggio dell'intervallo.");
+    }
+  }
   
   const renderLoading = () => (
     <div className="flex justify-center items-center h-[600px]">
@@ -267,10 +300,12 @@ function App() {
         initialWorkingHours={workingHours}
         initialDateOverrides={dateOverrides}
         initialConsultantInfo={consultantInfo}
+        initialSlotInterval={slotInterval}
         onSaveSportsData={handleSaveSportsData}
         onSaveWorkingHours={handleSaveWorkingHours}
         onSaveDateOverrides={handleSaveDateOverrides}
         onSaveConsultantInfo={handleSaveConsultantInfo}
+        onSaveSlotInterval={handleSaveSlotInterval}
         onLogout={handleAdminLogout}
         isGoogleSignedIn={isGoogleSignedIn}
         onGoogleSignIn={handleGoogleSignIn}

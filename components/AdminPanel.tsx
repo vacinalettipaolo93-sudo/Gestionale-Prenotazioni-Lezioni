@@ -7,10 +7,12 @@ interface AdminPanelProps {
     initialDateOverrides: DateOverrides;
     initialSportsData: Sport[];
     initialConsultantInfo: ConsultantInfo;
+    initialSlotInterval: number;
     onSaveWorkingHours: (newHours: WorkingHours) => void;
     onSaveDateOverrides: (newOverrides: DateOverrides) => void;
     onSaveSportsData: (newSports: Sport[]) => void;
     onSaveConsultantInfo: (newInfo: ConsultantInfo) => void;
+    onSaveSlotInterval: (newInterval: number) => void;
     onLogout: () => void;
     isGoogleSignedIn: boolean;
     onGoogleSignIn: () => void;
@@ -24,10 +26,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     initialDateOverrides, 
     initialSportsData,
     initialConsultantInfo,
+    initialSlotInterval,
     onSaveWorkingHours,
     onSaveDateOverrides,
     onSaveSportsData,
     onSaveConsultantInfo,
+    onSaveSlotInterval,
     onLogout,
     isGoogleSignedIn,
     onGoogleSignIn,
@@ -39,6 +43,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [dateOverrides, setDateOverrides] = useState<DateOverrides>(initialDateOverrides);
     const [sportsData, setSportsData] = useState<Sport[]>(JSON.parse(JSON.stringify(initialSportsData)));
     const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(initialConsultantInfo);
+    const [slotInterval, setSlotInterval] = useState<number>(initialSlotInterval);
     
     const [activeTab, setActiveTab] = useState('profile');
 
@@ -65,6 +70,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => {
         setConsultantInfo(initialConsultantInfo);
     }, [initialConsultantInfo]);
+    
+    useEffect(() => {
+        setSlotInterval(initialSlotInterval);
+    }, [initialSlotInterval]);
 
 
     // --- State Update Handlers ---
@@ -287,6 +296,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const renderHoursTab = () => (
         <div className="p-6">
+            {/* Slot Interval */}
+            <div className="mb-8 pb-8 border-b">
+                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot</h3>
+                 <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">
+                    <label htmlFor="slot-interval" className="font-medium text-gray-700">Intervallo prenotazione (minuti):</label>
+                    <select
+                        id="slot-interval"
+                        value={slotInterval}
+                        onChange={(e) => setSlotInterval(Number(e.target.value))}
+                        className="p-2 border rounded-md"
+                    >
+                        <option value="15">15 minuti</option>
+                        <option value="30">30 minuti</option>
+                        <option value="60">60 minuti</option>
+                    </select>
+                 </div>
+                 <div className="mt-4 text-right">
+                    <button 
+                        onClick={() => onSaveSlotInterval(slotInterval)} 
+                        className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                    >
+                        Salva Intervallo
+                    </button>
+                </div>
+            </div>
+
             {/* Working Hours */}
             <div className="mb-8">
                 <h3 className="text-xl font-semibold mb-4">Orari di Lavoro Settimanali</h3>

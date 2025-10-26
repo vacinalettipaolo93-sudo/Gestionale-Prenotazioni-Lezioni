@@ -178,7 +178,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
             }
 
             const event = {
-                'summary': `${selection.lessonType.name} con ${name}`,
+                'summary': `${selection.sport.name}: ${selection.lessonType.name} - ${name}`,
                 'location': selection.location.address,
                 'description': eventDescription,
                 'start': {
