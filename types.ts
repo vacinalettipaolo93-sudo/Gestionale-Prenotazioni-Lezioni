@@ -24,7 +24,7 @@ export interface Sport {
   id: string;
   name: string;
   color: string;
-  icon?: React.FC<{ className?: string; style?: React.CSSProperties }>;
+  icon?: string;
   lessonTypes: LessonType[];
 }
 
@@ -61,4 +61,14 @@ export interface WorkingHours {
 
 export interface DateOverrides {
   [date: string]: { start: number; end: number } | null; // Key is 'YYYY-MM-DD'
+}
+
+/**
+ * Represents the structure of the main configuration document in Firestore.
+ */
+export interface AppConfig {
+  sportsData: Sport[];
+  consultantInfo: ConsultantInfo;
+  workingHours: WorkingHours;
+  dateOverrides: DateOverrides;
 }

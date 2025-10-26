@@ -1,5 +1,4 @@
 import type { Sport, ConsultantInfo, WorkingHours, Location, DateOverrides } from './types';
-import { BallIcon } from './components/icons';
 
 export const INITIAL_CONSULTANT_INFO: ConsultantInfo = {
   name: 'Paolo Mariani',
@@ -28,7 +27,7 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
     id: 'tennis',
     name: 'Tennis',
     color: '#eab308', // yellow-500
-    icon: BallIcon,
+    icon: 'BallIcon',
     lessonTypes: [
       {
         id: 'tennis-individuale',
@@ -55,7 +54,7 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
     id: 'padel',
     name: 'Padel',
     color: '#38bdf8', // sky-400
-    icon: BallIcon,
+    icon: 'BallIcon',
     lessonTypes: [
         {
             id: 'padel-individuale',

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
@@ -6,9 +5,11 @@ import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import { CogIcon } from './components/icons';
-import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo } from './types';
+import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES } from './constants';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
+import { db } from './firebaseConfig';
+
 
 declare const gapi: any;
 // FIX: Augment the window interface to include the 'google' object from the Google Identity Services script.
@@ -23,11 +24,12 @@ function App() {
   const [lessonSelection, setLessonSelection] = useState<LessonSelection | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   
-  // App data state
-  const [sportsData, setSportsData] = useState<Sport[]>(INITIAL_SPORTS_DATA);
-  const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(INITIAL_CONSULTANT_INFO);
-  const [workingHours, setWorkingHours] = useState<WorkingHours>(INITIAL_WORKING_HOURS);
-  const [dateOverrides, setDateOverrides] = useState<DateOverrides>(INITIAL_DATE_OVERRIDES);
+  // App data state - will be populated from Firestore
+  const [sportsData, setSportsData] = useState<Sport[]>([]);
+  const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo | null>(null);
+  const [workingHours, setWorkingHours] = useState<WorkingHours>({});
+  const [dateOverrides, setDateOverrides] = useState<DateOverrides>({});
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [slotInterval, setSlotInterval] = useState(30); // Default slot interval
 
   // Auth state
@@ -39,6 +41,45 @@ function App() {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
+
+  // --- FIREBASE REALTIME DATA ---
+  useEffect(() => {
+    const configRef = db.collection('configuration').doc('main');
+
+    const unsubscribe = configRef.onSnapshot(async (doc) => {
+      if (doc.exists) {
+        const data = doc.data() as AppConfig;
+        setSportsData(data.sportsData);
+        setConsultantInfo(data.consultantInfo);
+        setWorkingHours(data.workingHours);
+        setDateOverrides(data.dateOverrides);
+      } else {
+        // First run: Initialize the config document in Firestore
+        console.log("Configuration document not found. Initializing...");
+        const initialConfig: AppConfig = {
+          sportsData: INITIAL_SPORTS_DATA,
+          consultantInfo: INITIAL_CONSULTANT_INFO,
+          workingHours: INITIAL_WORKING_HOURS,
+          dateOverrides: INITIAL_DATE_OVERRIDES,
+        };
+        try {
+          await configRef.set(initialConfig);
+          console.log("Successfully initialized configuration in Firestore.");
+        } catch (error) {
+          console.error("Error initializing Firestore configuration:", error);
+          alert("Errore critico: impossibile inizializzare la configurazione dell'app.");
+        }
+      }
+      if(isLoadingConfig) setIsLoadingConfig(false);
+    }, (error) => {
+      console.error("Error fetching Firestore configuration:", error);
+      alert("Impossibile caricare la configurazione dell'applicazione. Controlla la connessione e la configurazione di Firebase.");
+      setIsLoadingConfig(false);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, [isLoadingConfig]); // Rerun if needed, e.g. after first init
 
   // --- GOOGLE API INITIALIZATION ---
   useEffect(() => {
@@ -159,7 +200,7 @@ function App() {
     setConfirmedBooking(null);
   };
   
-  // --- ADMIN HANDLERS ---
+  // --- ADMIN HANDLERS (NOW SAVE TO FIRESTORE) ---
   const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);
     setIsLoginModalOpen(false);
@@ -169,29 +210,57 @@ function App() {
     setIsAdminLoggedIn(false);
   }
 
-  const handleSaveWorkingHours = (newHours: WorkingHours) => {
-    setWorkingHours(newHours);
-    // Here you would typically save to a backend/DB
-    alert('Orari di lavoro aggiornati!');
+  const handleSaveWorkingHours = async (newHours: WorkingHours) => {
+    try {
+      await db.collection('configuration').doc('main').update({ workingHours: newHours });
+      alert('Orari di lavoro aggiornati!');
+    } catch (error) {
+      console.error("Error saving working hours:", error);
+      alert("Errore nel salvataggio degli orari.");
+    }
   }
   
-  const handleSaveDateOverrides = (newOverrides: DateOverrides) => {
-    setDateOverrides(newOverrides);
-    // Here you would typically save to a backend/DB
-    alert('Eccezioni del calendario aggiornate!');
+  const handleSaveDateOverrides = async (newOverrides: DateOverrides) => {
+    try {
+      await db.collection('configuration').doc('main').update({ dateOverrides: newOverrides });
+      alert('Eccezioni del calendario aggiornate!');
+    } catch (error) {
+      console.error("Error saving date overrides:", error);
+      alert("Errore nel salvataggio delle eccezioni.");
+    }
   }
   
-  const handleSaveSportsData = (newSportsData: Sport[]) => {
-    setSportsData(newSportsData);
-    alert('Dati di sport, lezioni e sedi aggiornati!');
+  const handleSaveSportsData = async (newSportsData: Sport[]) => {
+    try {
+      await db.collection('configuration').doc('main').update({ sportsData: newSportsData });
+      alert('Dati di sport, lezioni e sedi aggiornati!');
+    } catch (error) {
+      console.error("Error saving sports data:", error);
+      alert("Errore nel salvataggio dei dati sport.");
+    }
   }
   
-  const handleSaveConsultantInfo = (newInfo: ConsultantInfo) => {
-    setConsultantInfo(newInfo);
-    alert('Informazioni del profilo aggiornate!');
+  const handleSaveConsultantInfo = async (newInfo: ConsultantInfo) => {
+    try {
+      await db.collection('configuration').doc('main').update({ consultantInfo: newInfo });
+      alert('Informazioni del profilo aggiornate!');
+    } catch (error) {
+      console.error("Error saving consultant info:", error);
+      alert("Errore nel salvataggio del profilo.");
+    }
   }
+  
+  const renderLoading = () => (
+    <div className="flex justify-center items-center h-[600px]">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+    </div>
+  );
 
   const renderContent = () => {
+    if (isLoadingConfig || !consultantInfo) {
+      return renderLoading();
+    }
+
     if (isAdminLoggedIn) {
       return <AdminPanel 
         initialSportsData={sportsData}
@@ -211,7 +280,6 @@ function App() {
         return <EventTypeSelection sports={sportsData} onSelectionComplete={handleSelectionComplete} consultant={consultantInfo} />;
       case 'booking':
         if (!lessonSelection) {
-            // Should not happen, but as a fallback
             setCurrentPage('selection');
             return null;
         }
@@ -227,7 +295,6 @@ function App() {
         />;
       case 'confirmation':
          if (!confirmedBooking || !lessonSelection) {
-            // Should not happen, but as a fallback
             setCurrentPage('selection');
             return null;
         }

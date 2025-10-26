@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import type { Sport, LessonType, LessonOption, LessonSelection, Location, ConsultantInfo } from '../types';
-import { ClockIcon, RightArrowIcon, BackArrowIcon, LocationMarkerIcon } from './icons';
+import { ClockIcon, RightArrowIcon, BackArrowIcon, LocationMarkerIcon, BallIcon } from './icons';
 
 interface EventTypeSelectionProps {
   sports: Sport[];
   onSelectionComplete: (selection: LessonSelection) => void;
   consultant: ConsultantInfo;
 }
+
+const iconMap: { [key: string]: React.FC<any> } = {
+  BallIcon: BallIcon,
+};
 
 const EventTypeSelection: React.FC<EventTypeSelectionProps> = ({ sports, onSelectionComplete, consultant }) => {
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
@@ -105,15 +109,15 @@ const EventTypeSelection: React.FC<EventTypeSelectionProps> = ({ sports, onSelec
       ));
     }
     return sports.map(sport => {
-        const Icon = sport.icon;
+        const IconComponent = sport.icon ? iconMap[sport.icon] : null;
         return (
             <button
                 key={sport.id}
                 onClick={() => handleSportSelect(sport)}
                 className="w-full flex items-center p-4 border-b hover:bg-gray-50 transition-colors duration-200 text-left"
             >
-                {Icon ? (
-                    <Icon className="w-12 h-12 mr-4" style={{ color: sport.color }} />
+                {IconComponent ? (
+                    <IconComponent className="w-12 h-12 mr-4" style={{ color: sport.color }} />
                 ) : (
                     <div className="w-4 h-12 rounded-full mr-4" style={{ backgroundColor: sport.color }}></div>
                 )}

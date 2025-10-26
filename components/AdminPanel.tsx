@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon } from './icons';
 
@@ -39,6 +38,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
     const weekDays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+    // Sync internal state with props to reflect real-time updates from Firestore
+    useEffect(() => {
+        setWorkingHours(initialWorkingHours);
+    }, [initialWorkingHours]);
+
+    useEffect(() => {
+        setDateOverrides(initialDateOverrides);
+    }, [initialDateOverrides]);
+    
+    useEffect(() => {
+        setSportsData(JSON.parse(JSON.stringify(initialSportsData)));
+    }, [initialSportsData]);
+
+    useEffect(() => {
+        setConsultantInfo(initialConsultantInfo);
+    }, [initialConsultantInfo]);
+
 
     // --- State Update Handlers ---
     const updateState = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, updateFn: (draft: T) => void) => {
