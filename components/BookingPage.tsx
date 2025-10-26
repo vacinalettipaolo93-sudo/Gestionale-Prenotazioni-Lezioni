@@ -86,11 +86,11 @@ const BookingPage: React.FC<BookingPageProps> = ({
                   )
                   .map((event: any): CalendarEvent => {
                       if (event.start.date) {
-                        // All-day event: Blocks the entire day in UTC to avoid timezone shifts
-                        const startTime = new Date(event.start.date);
-                        startTime.setUTCHours(0, 0, 0, 0);
-                        const endTime = new Date(event.start.date);
-                        endTime.setUTCHours(23, 59, 59, 999);
+                        // All-day event: Blocks the entire local day.
+                        // new Date('YYYY-MM-DD') creates a date at midnight UTC. We need to treat it as local midnight.
+                        // Appending T00:00:00 forces JS to parse it in the local timezone.
+                        const startTime = new Date(event.start.date + 'T00:00:00');
+                        const endTime = new Date(event.start.date + 'T23:59:59');
                         return { startTime, endTime };
                       } else {
                         // Timed event
