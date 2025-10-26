@@ -216,8 +216,16 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 },
             };
 
+            // Determine target calendar with priority: Location > Sport > Primary
+            let targetCalendarId = 'primary';
+            if (selection.location.googleCalendarId) {
+                targetCalendarId = selection.location.googleCalendarId;
+            } else if (selection.sport.googleCalendarId) {
+                targetCalendarId = selection.sport.googleCalendarId;
+            }
+
             await gapi.client.calendar.events.insert({
-                'calendarId': 'primary',
+                'calendarId': targetCalendarId,
                 'resource': event,
             });
         }

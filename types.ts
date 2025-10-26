@@ -5,6 +5,7 @@ export interface Location {
   name: string;
   address: string;
   slotInterval?: number; // Intervallo in minuti, opzionale per questa sede
+  googleCalendarId?: string; // ID del calendario Google per questa sede
 }
 
 export interface LessonOption {
@@ -26,6 +27,7 @@ export interface Sport {
   color: string;
   icon?: string;
   lessonTypes: LessonType[];
+  googleCalendarId?: string; // ID del calendario Google per questo sport
 }
 
 export interface Booking {

@@ -7,6 +7,7 @@ declare const gapi: any;
 interface GoogleCalendar {
     id: string;
     summary: string;
+    accessRole: 'owner' | 'writer' | 'reader' | 'freeBusyReader';
 }
 
 interface AdminPanelProps {
@@ -65,9 +66,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
     // State for Integrations Tab
-    const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendar[]>([]);
+    const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
+
+    const writableCalendars = useMemo(() => {
+        return allGoogleCalendars.filter(cal => cal.accessRole === 'writer' || cal.accessRole === 'owner');
+    }, [allGoogleCalendars]);
 
     const weekDays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -81,15 +86,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     // Fetch Google Calendars when user is signed in
     useEffect(() => {
-        if (isGoogleSignedIn && activeTab === 'integrations') {
+        if (isGoogleSignedIn && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours')) {
+            if (allGoogleCalendars.length > 0) return; // Fetch only once
+            
             setIsLoadingCalendars(true);
             setCalendarError(null);
             gapi.client.calendar.calendarList.list()
                 .then((response: any) => {
                     if(response.result.items){
-                        setAvailableCalendars(response.result.items.map((cal: any) => ({ id: cal.id, summary: cal.summary })));
+                        setAllGoogleCalendars(response.result.items.map((cal: any) => ({ 
+                            id: cal.id, 
+                            summary: cal.summary,
+                            accessRole: cal.accessRole
+                        })));
                     } else {
-                        setAvailableCalendars([]);
+                        setAllGoogleCalendars([]);
                     }
                 })
                 .catch((error: any) => {
@@ -100,7 +111,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     setIsLoadingCalendars(false);
                 });
         }
-    }, [isGoogleSignedIn, activeTab]);
+    }, [isGoogleSignedIn, activeTab, allGoogleCalendars]);
 
 
     // --- State Update Handlers ---
@@ -278,6 +289,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         });
     };
 
+    const handleLocationCalendarChangeByName = (locationName: string, calendarId: string) => {
+        updateState(setSportsData, (draft) => {
+            draft.forEach(sport => {
+                sport.lessonTypes.forEach(lt => {
+                    lt.locations.forEach(loc => {
+                        if (loc.name === locationName) {
+                           if (calendarId) {
+                                loc.googleCalendarId = calendarId;
+                            } else {
+                                delete loc.googleCalendarId;
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    };
+
     const handleDeleteLocation = (sportIndex: number, ltIndex: number, locIndex: number) => {
         updateState(setSportsData, (draft: Sport[]) => {
             draft[sportIndex].lessonTypes[ltIndex].locations.splice(locIndex, 1);
@@ -393,33 +422,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
             </div>
             
-            {/* Location Specific Slot Interval */}
+            {/* Location Specific Settings */}
             <div className="mb-8 pb-8 border-b">
-                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot per Sedi</h3>
+                 <h3 className="text-xl font-semibold mb-4">Impostazioni Specifiche per Sede</h3>
                  <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
                     {uniqueLocations.map(loc => (
-                        <div key={loc.name} className="flex items-center justify-between gap-4">
-                             <label htmlFor={`slot-interval-${loc.id}`} className="font-medium text-gray-700 flex-1">{loc.name}:</label>
-                             <select
-                                id={`slot-interval-${loc.id}`}
-                                value={loc.slotInterval || 0}
-                                onChange={(e) => handleLocationIntervalChangeByName(loc.name, e.target.value)}
-                                className="p-2 border rounded-md w-48"
-                            >
-                                <option value="0">Default (Globale)</option>
-                                <option value="15">15 minuti</option>
-                                <option value="30">30 minuti</option>
-                                <option value="60">60 minuti</option>
-                            </select>
+                        <div key={loc.name} className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 border-t pt-4 first:border-t-0 first:pt-0">
+                             <label htmlFor={`slot-interval-${loc.id}`} className="font-medium text-gray-700">{loc.name}:</label>
+                             <div className="flex items-center gap-2">
+                                <label htmlFor={`slot-interval-${loc.id}`} className="text-sm">Intervallo:</label>
+                                <select
+                                    id={`slot-interval-${loc.id}`}
+                                    value={loc.slotInterval || 0}
+                                    onChange={(e) => handleLocationIntervalChangeByName(loc.name, e.target.value)}
+                                    className="p-2 border rounded-md w-full"
+                                >
+                                    <option value="0">Default (Globale)</option>
+                                    <option value="15">15 minuti</option>
+                                    <option value="30">30 minuti</option>
+                                    <option value="60">60 minuti</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label htmlFor={`calendar-loc-${loc.id}`} className="text-sm">Calendario:</label>
+                                <select
+                                    id={`calendar-loc-${loc.id}`}
+                                    value={loc.googleCalendarId || ''}
+                                    onChange={(e) => handleLocationCalendarChangeByName(loc.name, e.target.value)}
+                                    disabled={!isGoogleSignedIn}
+                                    className="p-2 border rounded-md w-full disabled:bg-gray-200"
+                                >
+                                    <option value="">Default (Primario)</option>
+                                    {writableCalendars.map(cal => (
+                                        <option key={cal.id} value={cal.id}>{cal.summary}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                     ))}
+                    {!isGoogleSignedIn && <p className="text-sm text-gray-500 mt-2">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici alle sedi.</p>}
                  </div>
                  <div className="mt-4 text-right">
                     <button 
                         onClick={() => onSaveSportsData(sportsData)} 
                         className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
                     >
-                        Salva Intervalli Sedi
+                        Salva Impostazioni Sedi
                     </button>
                 </div>
             </div>
@@ -548,12 +596,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="space-y-6">
                 {sportsData.map((sport, sportIndex) => (
                     <div key={sport.id} className="p-4 bg-white rounded-lg shadow">
-                        <div className="flex items-center justify-between border-b pb-3 mb-3">
-                             <div className="flex items-center gap-4">
+                        <div className="flex items-start justify-between border-b pb-3 mb-3 gap-4">
+                             <div className="flex items-center gap-4 flex-grow">
                                 <input type="color" value={sport.color} onChange={e => handleUpdateSport(sportIndex, 'color', e.target.value)} className="w-10 h-10" />
-                                <input type="text" value={sport.name} onChange={e => handleUpdateSport(sportIndex, 'name', e.target.value)} className="text-lg font-bold p-1 border-b-2" />
+                                <input type="text" value={sport.name} onChange={e => handleUpdateSport(sportIndex, 'name', e.target.value)} className="text-lg font-bold p-1 border-b-2 flex-grow" />
                             </div>
-                            <button onClick={() => handleDeleteSport(sportIndex)} className="text-gray-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
+                            <div className="flex flex-col items-end gap-2">
+                                <button onClick={() => handleDeleteSport(sportIndex)} className="text-gray-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
+                                {isGoogleSignedIn && (
+                                    <div className="w-64">
+                                        <label htmlFor={`calendar-sport-${sport.id}`} className="block text-xs font-medium text-gray-600 mb-1">Calendario Google per nuovi eventi</label>
+                                        <select
+                                            id={`calendar-sport-${sport.id}`}
+                                            value={sport.googleCalendarId || ''}
+                                            onChange={e => handleUpdateSport(sportIndex, 'googleCalendarId', e.target.value)}
+                                            className="p-1 border rounded-md w-full text-sm"
+                                        >
+                                            <option value="">Default (Primario)</option>
+                                            {writableCalendars.map(cal => (
+                                                <option key={cal.id} value={cal.id}>{cal.summary}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         
                         {/* Lesson Types */}
@@ -602,6 +668,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 ))}
             </div>
+            {!isGoogleSignedIn && <p className="text-sm text-gray-500 mt-4">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
             <button onClick={handleAddSport} className="mt-6 w-full text-center bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
             <div className="mt-8 text-right">
                 <button 
@@ -633,7 +700,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button onClick={onGoogleSignOut} className="text-sm text-red-500 hover:underline">Disconnetti</button>
                     </div>
                     
-                    <h4 className="font-semibold text-gray-800 mb-2">Seleziona i calendari da sincronizzare</h4>
+                    <h4 className="font-semibold text-gray-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
                     <p className="text-sm text-gray-500 mb-4">
                         Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
                     </p>
@@ -648,9 +715,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <p className="font-bold">Errore</p>
                             <p>{calendarError}</p>
                         </div>
-                    ) : availableCalendars.length > 0 ? (
+                    ) : allGoogleCalendars.length > 0 ? (
                         <div className="space-y-3 p-4 bg-gray-50 border rounded-md max-h-96 overflow-y-auto">
-                            {availableCalendars.map(cal => (
+                            {allGoogleCalendars.map(cal => (
                                 <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer">
                                 <input
                                     type="checkbox"
