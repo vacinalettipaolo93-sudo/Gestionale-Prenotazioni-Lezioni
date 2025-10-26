@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export interface Location {
@@ -37,6 +36,8 @@ export interface Booking {
   startTime: Date;
   name: string;
   email: string;
+  phone: string;
+  participants: string[];
 }
 
 // Represents the user's final selection before navigating to the booking page

@@ -1,17 +1,17 @@
 
-
-
 import React, { useState } from 'react';
-import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location } from '../types';
-import { XIcon, PlusIcon, TrashIcon } from './icons';
+import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon } from './icons';
 
 interface AdminPanelProps {
     initialWorkingHours: WorkingHours;
     initialDateOverrides: DateOverrides;
     initialSportsData: Sport[];
+    initialConsultantInfo: ConsultantInfo;
     onSaveWorkingHours: (newHours: WorkingHours) => void;
     onSaveDateOverrides: (newOverrides: DateOverrides) => void;
     onSaveSportsData: (newSports: Sport[]) => void;
+    onSaveConsultantInfo: (newInfo: ConsultantInfo) => void;
     onLogout: () => void;
 }
 
@@ -19,16 +19,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     initialWorkingHours, 
     initialDateOverrides, 
     initialSportsData,
+    initialConsultantInfo,
     onSaveWorkingHours,
     onSaveDateOverrides,
     onSaveSportsData,
+    onSaveConsultantInfo,
     onLogout 
 }) => {
     const [workingHours, setWorkingHours] = useState<WorkingHours>(initialWorkingHours);
     const [dateOverrides, setDateOverrides] = useState<DateOverrides>(initialDateOverrides);
     const [sportsData, setSportsData] = useState<Sport[]>(JSON.parse(JSON.stringify(initialSportsData)));
+    const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(initialConsultantInfo);
     
-    const [activeTab, setActiveTab] = useState('sports');
+    const [activeTab, setActiveTab] = useState('profile');
 
     const [newOverrideDate, setNewOverrideDate] = useState('');
     const [newOverrideStart, setNewOverrideStart] = useState('09:00');
@@ -38,7 +41,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const weekDays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
     // --- State Update Handlers ---
-    // FIX: Converted to a generic function to preserve type safety. This fixes the downstream error where properties on 'hours' were not accessible.
     const updateState = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, updateFn: (draft: T) => void) => {
         setter((current: T) => {
             const draft = JSON.parse(JSON.stringify(current)) as T;
@@ -46,6 +48,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             return draft;
         });
     };
+    
+    // --- Consultant Info Handlers ---
+    const handleInfoChange = (field: keyof ConsultantInfo, value: string) => {
+        setConsultantInfo(prev => ({...prev, [field]: value}));
+    };
+    
+    const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const result = e.target?.result;
+                if (typeof result === 'string') {
+                    handleInfoChange('avatarUrl', result);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
 
     // --- Hours & Overrides Handlers ---
     const handleWorkingHoursChange = (day: number, field: 'start' | 'end', value: string) => {
@@ -180,6 +202,62 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         });
     };
 
+    const renderProfileTab = () => (
+        <div className="p-6 max-w-2xl mx-auto">
+            <h3 className="text-xl font-semibold mb-6">Personalizzazione Profilo & Home</h3>
+            <div className="space-y-6 bg-gray-50 p-6 rounded-lg">
+                <div className="flex items-center gap-6">
+                    <img src={consultantInfo.avatarUrl} alt={consultantInfo.name} className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md" />
+                    <div className="relative">
+                         <label htmlFor="avatar-upload" className="cursor-pointer bg-white text-primary font-semibold py-2 px-4 rounded-md border border-primary hover:bg-primary-light transition-colors flex items-center gap-2">
+                            <CameraIcon className="w-5 h-5" />
+                            Cambia Foto
+                        </label>
+                        <input id="avatar-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    </div>
+                </div>
+                <div>
+                    <label htmlFor="consultant-name" className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                    <input 
+                        id="consultant-name"
+                        type="text" 
+                        value={consultantInfo.name} 
+                        onChange={(e) => handleInfoChange('name', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                </div>
+                 <div>
+                    <label htmlFor="consultant-title" className="block text-sm font-medium text-gray-700 mb-1">Titolo (sottotitolo)</label>
+                    <input 
+                        id="consultant-title"
+                        type="text" 
+                        value={consultantInfo.title} 
+                        onChange={(e) => handleInfoChange('title', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                </div>
+                 <div>
+                    <label htmlFor="consultant-welcome" className="block text-sm font-medium text-gray-700 mb-1">Messaggio di Benvenuto</label>
+                    <textarea 
+                        id="consultant-welcome"
+                        rows={3}
+                        value={consultantInfo.welcomeMessage} 
+                        onChange={(e) => handleInfoChange('welcomeMessage', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                </div>
+            </div>
+             <div className="mt-6 text-right">
+                <button 
+                    onClick={() => onSaveConsultantInfo(consultantInfo)} 
+                    className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                >
+                    Salva Modifiche Profilo
+                </button>
+            </div>
+        </div>
+    );
+    
     const renderHoursTab = () => (
         <div className="p-6">
             {/* Working Hours */}
@@ -437,6 +515,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
                     <button
+                        onClick={() => setActiveTab('profile')}
+                        className={`${
+                            activeTab === 'profile'
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                    >
+                        Profilo & Home
+                    </button>
+                    <button
                         onClick={() => setActiveTab('hours')}
                         className={`${
                             activeTab === 'hours'
@@ -459,6 +547,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </nav>
             </div>
             
+            {activeTab === 'profile' && renderProfileTab()}
             {activeTab === 'hours' && renderHoursTab()}
             {activeTab === 'sports' && renderSportsTab()}
 

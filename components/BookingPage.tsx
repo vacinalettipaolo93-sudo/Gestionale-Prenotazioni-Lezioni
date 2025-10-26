@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverrides } from '../types';
 import { generateAvailableTimes, CalendarEvent } from '../utils/date';
 import { getDaysInMonth, getMonthName, getYear } from '../utils/date';
-import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon } from './icons';
+import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon, PhoneIcon, PlusIcon, XIcon } from './icons';
 import { db, firestore } from '../firebaseConfig';
 
 declare const gapi: any;
@@ -28,6 +28,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [participants, setParticipants] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,6 +55,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 .where("startTime", "<=", firestore.Timestamp.fromDate(endOfDay));
             
             const querySnapshot = await q.get();
+            // FIX: The type for existing bookings was too restrictive and caused a type error when passed to `generateAvailableTimes`.
+            // The documents from Firestore should contain all properties of a `Booking`, so this is changed to `Booking[]`.
             const existingBookings: Booking[] = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
@@ -119,10 +123,27 @@ const BookingPage: React.FC<BookingPageProps> = ({
       return newDate;
     });
   };
+  
+  const handleAddParticipant = () => {
+    if (participants.length < 4) {
+      setParticipants([...participants, '']);
+    }
+  };
+
+  const handleParticipantChange = (index: number, value: string) => {
+    const newParticipants = [...participants];
+    newParticipants[index] = value;
+    setParticipants(newParticipants);
+  };
+
+  const handleRemoveParticipant = (index: number) => {
+    setParticipants(participants.filter((_, i) => i !== index));
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !selectedTime || !selectedDate) return;
+    if (!name || !email || !phone || !selectedTime || !selectedDate) return;
     
     setIsSubmitting(true);
 
@@ -132,8 +153,10 @@ const BookingPage: React.FC<BookingPageProps> = ({
         bookingStartTime.setHours(hours, minutes);
         
         const bookingEndTime = new Date(bookingStartTime.getTime() + selection.option.duration * 60000);
+        
+        const finalParticipants = participants.filter(p => p.trim() !== '');
 
-        const newBooking = {
+        const newBookingData = {
             sportId: selection.sport.id,
             lessonTypeId: selection.lessonType.id,
             duration: selection.option.duration,
@@ -141,16 +164,23 @@ const BookingPage: React.FC<BookingPageProps> = ({
             startTime: firestore.Timestamp.fromDate(bookingStartTime),
             name,
             email,
+            phone,
+            participants: finalParticipants,
         };
 
-        await db.collection("bookings").add(newBooking);
+        await db.collection("bookings").add(newBookingData);
 
         // Create event in Google Calendar
         if (isGoogleSignedIn) {
+            let eventDescription = `Prenotazione effettuata da ${name} (${email}).\nTelefono: ${phone}.`;
+            if (finalParticipants.length > 0) {
+                eventDescription += `\nAltri partecipanti: ${finalParticipants.join(', ')}.`;
+            }
+
             const event = {
                 'summary': `${selection.lessonType.name} con ${name}`,
                 'location': selection.location.address,
-                'description': `Prenotazione effettuata da ${name} (${email}).`,
+                'description': eventDescription,
                 'start': {
                     'dateTime': bookingStartTime.toISOString(),
                     'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -167,7 +197,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
             });
         }
         
-        onBookingConfirmed({ ...newBooking, startTime: bookingStartTime });
+        onBookingConfirmed({ ...newBookingData, startTime: bookingStartTime });
     } catch (error) {
         console.error("Error adding document or calendar event: ", error);
         alert("Si è verificato un errore durante la prenotazione. Riprova.");
@@ -283,13 +313,47 @@ const BookingPage: React.FC<BookingPageProps> = ({
                   <input type="text" id="name" value={name} onChange={e => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary" />
                 </div>
               </div>
-              <div className="mb-6">
+               <div className="mb-4">
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <div className="relative">
                   <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="email" id="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary" />
                 </div>
               </div>
+              <div className="mb-4">
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">Cellulare</label>
+                <div className="relative">
+                  <PhoneIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input type="tel" id="phone" value={phone} onChange={e => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary" />
+                </div>
+              </div>
+
+              {/* Participants */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aggiungi partecipanti (opzionale)</label>
+                {participants.map((participant, index) => (
+                  <div key={index} className="relative mb-2">
+                    <UserIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder={`Nome partecipante ${index + 1}`}
+                      value={participant}
+                      onChange={(e) => handleParticipantChange(index, e.target.value)}
+                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
+                    />
+                    <button type="button" onClick={() => handleRemoveParticipant(index)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500">
+                      <XIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
+                {participants.length < 4 && (
+                  <button type="button" onClick={handleAddParticipant} className="flex items-center text-sm text-primary hover:underline mt-2">
+                    <PlusIcon className="w-4 h-4 mr-1" />
+                    Aggiungi partecipante
+                  </button>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -298,6 +362,9 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 {isSubmitting && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>}
                 {isSubmitting ? 'Conferma in corso...' : 'Conferma Prenotazione'}
               </button>
+              <p className="mt-4 text-center text-sm font-bold uppercase text-secondary">
+                La prenotazione sarà confermata per messaggio previa verifica disponibilità campo
+              </p>
             </form>
           </div>
         )}

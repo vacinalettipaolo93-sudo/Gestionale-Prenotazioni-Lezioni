@@ -6,7 +6,7 @@ import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import { CogIcon } from './components/icons';
-import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport } from './types';
+import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES } from './constants';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
 
@@ -25,7 +25,7 @@ function App() {
   
   // App data state
   const [sportsData, setSportsData] = useState<Sport[]>(INITIAL_SPORTS_DATA);
-  const [consultantInfo, setConsultantInfo] = useState(INITIAL_CONSULTANT_INFO);
+  const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(INITIAL_CONSULTANT_INFO);
   const [workingHours, setWorkingHours] = useState<WorkingHours>(INITIAL_WORKING_HOURS);
   const [dateOverrides, setDateOverrides] = useState<DateOverrides>(INITIAL_DATE_OVERRIDES);
   const [slotInterval, setSlotInterval] = useState(30); // Default slot interval
@@ -185,6 +185,11 @@ function App() {
     setSportsData(newSportsData);
     alert('Dati di sport, lezioni e sedi aggiornati!');
   }
+  
+  const handleSaveConsultantInfo = (newInfo: ConsultantInfo) => {
+    setConsultantInfo(newInfo);
+    alert('Informazioni del profilo aggiornate!');
+  }
 
   const renderContent = () => {
     if (isAdminLoggedIn) {
@@ -192,9 +197,11 @@ function App() {
         initialSportsData={sportsData}
         initialWorkingHours={workingHours}
         initialDateOverrides={dateOverrides}
+        initialConsultantInfo={consultantInfo}
         onSaveSportsData={handleSaveSportsData}
         onSaveWorkingHours={handleSaveWorkingHours}
         onSaveDateOverrides={handleSaveDateOverrides}
+        onSaveConsultantInfo={handleSaveConsultantInfo}
         onLogout={handleAdminLogout}
       />;
     }

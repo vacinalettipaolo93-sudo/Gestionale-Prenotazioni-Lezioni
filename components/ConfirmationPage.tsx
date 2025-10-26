@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Booking, LessonSelection, ConsultantInfo } from '../types';
-import { CheckCircleIcon, CalendarIcon, ClockIcon, UserIcon, LocationMarkerIcon } from './icons';
+import { CheckCircleIcon, CalendarIcon, ClockIcon, UserIcon, LocationMarkerIcon, PhoneIcon } from './icons';
 
 interface ConfirmationPageProps {
   booking: Booking;
@@ -47,6 +47,10 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
             <ClockIcon className="w-5 h-5 mr-3 text-gray-500" />
             <span>{formattedTime} ({booking.duration} min)</span>
           </div>
+           <div className="flex items-center">
+            <PhoneIcon className="w-5 h-5 mr-3 text-gray-500" />
+            <span>{booking.phone}</span>
+          </div>
           <div className="flex items-start">
             <LocationMarkerIcon className="w-5 h-5 mr-3 text-gray-500 mt-1 flex-shrink-0" />
             <div>
@@ -61,10 +65,24 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
               </a>
             </div>
           </div>
+          {booking.participants && booking.participants.length > 0 && (
+             <div className="flex items-start">
+                <UserIcon className="w-5 h-5 mr-3 text-gray-500 mt-1 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold block">Altri Partecipanti</span>
+                  <ul className="list-disc list-inside text-sm">
+                    {booking.participants.map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+            </div>
+          )}
         </div>
         <p className="text-sm text-gray-500 mt-6">
-          Un invito di calendario con tutti i dettagli è stato inviato al tuo indirizzo email: <span className="font-semibold text-gray-600">{booking.email}</span>.
+          Un riepilogo è stato inviato al tuo indirizzo email: <span className="font-semibold text-gray-600">{booking.email}</span>.
         </p>
+         <p className="mt-4 text-center text-xs font-bold uppercase text-secondary">
+            La prenotazione sarà confermata per messaggio previa verifica disponibilità campo
+         </p>
       </div>
 
       <button

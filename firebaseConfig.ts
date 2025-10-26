@@ -13,14 +13,11 @@ const firebaseConfig = {
   appId: "1:437487120297:web:30895af62079b5301a1eb8"
 };
 
-// Initialize Firebase only once (guard for SSR/HMR)
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
+// Initialize Firebase.
+firebase.initializeApp(firebaseConfig);
 
-// Export the Firestore instance and the firestore namespace as named exports
-export const db = firebase.firestore();
-export const firestore = firebase.firestore;
+// Get and export the Firestore instance and the firestore namespace
+const db = firebase.firestore();
+const firestore = firebase.firestore;
 
-// Also export firebase as default if other files expect default import
-export default firebase;
+export { db, firestore };
