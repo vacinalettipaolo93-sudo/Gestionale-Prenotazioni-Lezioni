@@ -13,8 +13,8 @@ const firebaseConfig = {
   appId: "1:437487120297:web:30895af62079b5301a1eb8"
 };
 
-// Initialize Firebase. The check for existing apps is mainly for HMR during development.
-// For a production build, initializing directly is safe and can avoid bundler issues.
+// Initialize Firebase. For a production build, initializing directly is safe 
+// and avoids potential issues with static analysis by bundlers.
 firebase.initializeApp(firebaseConfig);
 
 // Get and export the Firestore instance
