@@ -79,11 +79,27 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 });
                 
                 calendarEvents = response.result.items
-                  .filter((event: any) => event.status !== 'cancelled' && event.start.dateTime) // Filter out cancelled and all-day events
-                  .map((event: any) => ({
-                    startTime: new Date(event.start.dateTime),
-                    endTime: new Date(event.end.dateTime),
-                }));
+                  .filter((event: any) => 
+                    event.status !== 'cancelled' && 
+                    (event.start.dateTime || event.start.date) &&
+                    event.transparency !== 'transparent' // Ignore events marked as "Available"
+                  )
+                  .map((event: any): CalendarEvent => {
+                      if (event.start.date) {
+                        // All-day event: Blocks the entire day in UTC to avoid timezone shifts
+                        const startTime = new Date(event.start.date);
+                        startTime.setUTCHours(0, 0, 0, 0);
+                        const endTime = new Date(event.start.date);
+                        endTime.setUTCHours(23, 59, 59, 999);
+                        return { startTime, endTime };
+                      } else {
+                        // Timed event
+                        return {
+                            startTime: new Date(event.start.dateTime),
+                            endTime: new Date(event.end.dateTime),
+                        };
+                      }
+                  });
             }
 
             // Use location-specific interval if available, otherwise fall back to global interval
