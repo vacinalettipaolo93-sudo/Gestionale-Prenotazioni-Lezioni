@@ -13,9 +13,11 @@ const firebaseConfig = {
   appId: "1:437487120297:web:30895af62079b5301a1eb8"
 };
 
-// Initialize Firebase. For a production build, initializing directly is safe 
-// and avoids potential issues with static analysis by bundlers.
+// Initialize Firebase.
 firebase.initializeApp(firebaseConfig);
 
-// Get and export the Firestore instance
-export const db = firebase.firestore();
+// Get and export the Firestore instance and the firestore namespace
+const db = firebase.firestore();
+const firestore = firebase.firestore;
+
+export { db, firestore };

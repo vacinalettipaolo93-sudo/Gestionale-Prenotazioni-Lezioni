@@ -3,9 +3,7 @@ import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverri
 import { generateAvailableTimes, CalendarEvent } from '../utils/date';
 import { getDaysInMonth, getMonthName, getYear } from '../utils/date';
 import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon } from './icons';
-import { db } from '../firebaseConfig';
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+import { db, firestore } from '../firebaseConfig';
 
 declare const gapi: any;
 
@@ -51,8 +49,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
 
             const bookingsRef = db.collection("bookings");
             const q = bookingsRef
-                .where("startTime", ">=", firebase.firestore.Timestamp.fromDate(startOfDay))
-                .where("startTime", "<=", firebase.firestore.Timestamp.fromDate(endOfDay));
+                .where("startTime", ">=", firestore.Timestamp.fromDate(startOfDay))
+                .where("startTime", "<=", firestore.Timestamp.fromDate(endOfDay));
             
             const querySnapshot = await q.get();
             const existingBookings: Booking[] = [];
@@ -60,7 +58,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 const data = doc.data();
                 existingBookings.push({
                     ...data,
-                    startTime: (data.startTime as firebase.firestore.Timestamp).toDate(),
+                    startTime: (data.startTime as import('firebase/compat/app').default.firestore.Timestamp).toDate(),
                 } as Booking);
             });
 
@@ -140,7 +138,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
             lessonTypeId: selection.lessonType.id,
             duration: selection.option.duration,
             location: selection.location,
-            startTime: firebase.firestore.Timestamp.fromDate(bookingStartTime),
+            startTime: firestore.Timestamp.fromDate(bookingStartTime),
             name,
             email,
         };
