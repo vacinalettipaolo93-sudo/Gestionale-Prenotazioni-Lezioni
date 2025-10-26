@@ -35,4 +35,6 @@ export const API_KEY = "AIzaSyCwhsKOJEDrhmarO0sEI7ibdn35f8hIiSI";
 
 export const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
 
-export const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+// FIX: Aggiunto lo scope 'calendar.readonly' per permettere la lettura della lista dei calendari e degli eventi.
+// Questo è fondamentale per la sincronizzazione della disponibilità.
+export const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";

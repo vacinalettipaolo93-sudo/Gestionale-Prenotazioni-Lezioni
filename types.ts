@@ -72,4 +72,5 @@ export interface AppConfig {
   workingHours: WorkingHours;
   dateOverrides: DateOverrides;
   slotInterval: number;
+  googleCalendarIds?: string[];
 }

@@ -2,17 +2,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon } from './icons';
 
+declare const gapi: any;
+
+interface GoogleCalendar {
+    id: string;
+    summary: string;
+}
+
 interface AdminPanelProps {
     initialWorkingHours: WorkingHours;
     initialDateOverrides: DateOverrides;
     initialSportsData: Sport[];
     initialConsultantInfo: ConsultantInfo;
     initialSlotInterval: number;
+    initialSelectedCalendarIds: string[];
     onSaveWorkingHours: (newHours: WorkingHours) => void;
     onSaveDateOverrides: (newOverrides: DateOverrides) => void;
     onSaveSportsData: (newSports: Sport[]) => void;
     onSaveConsultantInfo: (newInfo: ConsultantInfo) => void;
     onSaveSlotInterval: (newInterval: number) => void;
+    onSaveSelectedCalendars: (calendarIds: string[]) => void;
     onLogout: () => void;
     isGoogleSignedIn: boolean;
     onGoogleSignIn: () => void;
@@ -27,11 +36,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     initialSportsData,
     initialConsultantInfo,
     initialSlotInterval,
+    initialSelectedCalendarIds,
     onSaveWorkingHours,
     onSaveDateOverrides,
     onSaveSportsData,
     onSaveConsultantInfo,
     onSaveSlotInterval,
+    onSaveSelectedCalendars,
     onLogout,
     isGoogleSignedIn,
     onGoogleSignIn,
@@ -44,6 +55,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [sportsData, setSportsData] = useState<Sport[]>(JSON.parse(JSON.stringify(initialSportsData)));
     const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(initialConsultantInfo);
     const [slotInterval, setSlotInterval] = useState<number>(initialSlotInterval);
+    const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(initialSelectedCalendarIds);
     
     const [activeTab, setActiveTab] = useState('profile');
 
@@ -52,28 +64,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [newOverrideEnd, setNewOverrideEnd] = useState('17:00');
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
+    // State for Integrations Tab
+    const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendar[]>([]);
+    const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
+    const [calendarError, setCalendarError] = useState<string | null>(null);
+
     const weekDays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
     // Sync internal state with props to reflect real-time updates from Firestore
-    useEffect(() => {
-        setWorkingHours(initialWorkingHours);
-    }, [initialWorkingHours]);
+    useEffect(() => setWorkingHours(initialWorkingHours), [initialWorkingHours]);
+    useEffect(() => setDateOverrides(initialDateOverrides), [initialDateOverrides]);
+    useEffect(() => setSportsData(JSON.parse(JSON.stringify(initialSportsData))), [initialSportsData]);
+    useEffect(() => setConsultantInfo(initialConsultantInfo), [initialConsultantInfo]);
+    useEffect(() => setSlotInterval(initialSlotInterval), [initialSlotInterval]);
+    useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
+    // Fetch Google Calendars when user is signed in
     useEffect(() => {
-        setDateOverrides(initialDateOverrides);
-    }, [initialDateOverrides]);
-    
-    useEffect(() => {
-        setSportsData(JSON.parse(JSON.stringify(initialSportsData)));
-    }, [initialSportsData]);
-
-    useEffect(() => {
-        setConsultantInfo(initialConsultantInfo);
-    }, [initialConsultantInfo]);
-    
-    useEffect(() => {
-        setSlotInterval(initialSlotInterval);
-    }, [initialSlotInterval]);
+        if (isGoogleSignedIn && activeTab === 'integrations') {
+            setIsLoadingCalendars(true);
+            setCalendarError(null);
+            gapi.client.calendar.calendarList.list()
+                .then((response: any) => {
+                    if(response.result.items){
+                        setAvailableCalendars(response.result.items.map((cal: any) => ({ id: cal.id, summary: cal.summary })));
+                    } else {
+                        setAvailableCalendars([]);
+                    }
+                })
+                .catch((error: any) => {
+                    console.error("Error fetching calendar list:", error);
+                    setCalendarError("Impossibile caricare l'elenco dei calendari. Prova a disconnetterti e a riconnetterti a Google per aggiornare le autorizzazioni.");
+                })
+                .finally(() => {
+                    setIsLoadingCalendars(false);
+                });
+        }
+    }, [isGoogleSignedIn, activeTab]);
 
 
     // --- State Update Handlers ---
@@ -270,6 +297,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         });
         return Array.from(locationsMap.values());
     }, [sportsData]);
+
+     // --- Integrations Handlers ---
+    const handleCalendarSelectionChange = (calendarId: string) => {
+        setSelectedCalendarIds(prev => {
+            if (prev.includes(calendarId)) {
+                return prev.filter(id => id !== calendarId);
+            } else {
+                return [...prev, calendarId];
+            }
+        });
+    };
 
     const renderProfileTab = () => (
         <div className="p-6 max-w-2xl mx-auto">
@@ -476,26 +514,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                     )}
                     <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 flex items-center">
-                        <PlusIcon className="w-5 h-5 mr-1" /> Aggiungi
+                        <PlusIcon className="w-5 h-5 mr-1"/> Aggiungi Eccezione
                     </button>
                 </form>
-
                 <div className="space-y-2">
                     {Object.entries(dateOverrides).sort().map(([date, hours]) => (
                         <div key={date} className="flex items-center justify-between p-3 bg-white border rounded-md">
-                            <span className="font-medium">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                            <span className="font-semibold">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                             {hours ? (
-                                <span>{`${String(Math.floor(hours.start / 60)).padStart(2, '0')}:${String(hours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(hours.end / 60)).padStart(2, '0')}:${String(hours.end % 60).padStart(2, '0')}`}</span>
+                                <span className="text-green-600">{`${String(Math.floor(hours.start / 60)).padStart(2, '0')}:${String(hours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(hours.end / 60)).padStart(2, '0')}:${String(hours.end % 60).padStart(2, '0')}`}</span>
                             ) : (
                                 <span className="text-red-600">Non disponibile</span>
                             )}
-                            <button onClick={() => handleRemoveOverride(date)} className="text-red-500 hover:text-red-700 p-1">
-                                <TrashIcon className="w-5 h-5" />
-                            </button>
+                            <button onClick={() => handleRemoveOverride(date)} className="text-gray-400 hover:text-red-500"><XIcon className="w-5 h-5"/></button>
                         </div>
                     ))}
                 </div>
-                <div className="mt-6 text-right">
+                 <div className="mt-6 text-right">
                     <button 
                         onClick={() => onSaveDateOverrides(dateOverrides)} 
                         className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
@@ -506,188 +541,185 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </div>
     );
-    
-    const renderSportsTab = () => (
+
+    const renderServicesTab = () => (
         <div className="p-6">
             <h3 className="text-xl font-semibold mb-4">Gestione Sport, Lezioni e Sedi</h3>
-            {sportsData.map((sport, sIndex) => (
-                <div key={sport.id} className="bg-gray-50 border rounded-lg p-4 mb-4">
-                    {/* Sport Details */}
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4 flex-grow">
-                            <input
-                                type="text"
-                                value={sport.name}
-                                onChange={(e) => handleUpdateSport(sIndex, 'name', e.target.value)}
-                                className="font-bold text-lg p-2 border rounded"
-                            />
-                            <input
-                                type="color"
-                                value={sport.color}
-                                onChange={(e) => handleUpdateSport(sIndex, 'color', e.target.value)}
-                                className="h-10 w-10 p-1 border rounded"
-                            />
-                        </div>
-                        <button onClick={() => handleDeleteSport(sIndex)} className="text-red-500 hover:text-red-700 p-2">
-                            <TrashIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-
-                    {/* Lesson Types */}
-                    {sport.lessonTypes.map((lt, ltIndex) => (
-                        <div key={lt.id} className="bg-white border rounded-md p-4 mb-3 ml-4">
-                             <div className="flex items-center justify-between mb-2">
-                                <input
-                                    type="text"
-                                    value={lt.name}
-                                    onChange={(e) => handleUpdateLessonType(sIndex, ltIndex, 'name', e.target.value)}
-                                    className="font-semibold p-1 border-b w-full"
-                                />
-                                <button onClick={() => handleDeleteLessonType(sIndex, ltIndex)} className="text-red-500 hover:text-red-700 p-2 ml-2">
-                                    <TrashIcon className="w-4 h-4" />
-                                </button>
+            <div className="space-y-6">
+                {sportsData.map((sport, sportIndex) => (
+                    <div key={sport.id} className="p-4 bg-white rounded-lg shadow">
+                        <div className="flex items-center justify-between border-b pb-3 mb-3">
+                             <div className="flex items-center gap-4">
+                                <input type="color" value={sport.color} onChange={e => handleUpdateSport(sportIndex, 'color', e.target.value)} className="w-10 h-10" />
+                                <input type="text" value={sport.name} onChange={e => handleUpdateSport(sportIndex, 'name', e.target.value)} className="text-lg font-bold p-1 border-b-2" />
                             </div>
-                            <textarea
-                                value={lt.description}
-                                onChange={(e) => handleUpdateLessonType(sIndex, ltIndex, 'description', e.target.value)}
-                                className="text-sm text-gray-600 p-1 border rounded w-full mb-3"
-                                placeholder="Descrizione..."
-                                rows={2}
-                            />
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Durations */}
-                                <div>
-                                    <h5 className="font-semibold mb-2">Durate (min)</h5>
-                                    {lt.options.map((opt, optIndex) => (
-                                        <div key={opt.id} className="flex items-center mb-2">
-                                            <input
-                                                type="number"
-                                                value={opt.duration}
-                                                onChange={(e) => handleUpdateOption(sIndex, ltIndex, optIndex, e.target.value)}
-                                                className="p-1 border rounded w-24"
-                                            />
-                                            <button onClick={() => handleDeleteOption(sIndex, ltIndex, optIndex)} className="ml-2 text-red-500 hover:text-red-700 p-1">
-                                                <XIcon className="w-4 h-4" />
-                                            </button>
+                            <button onClick={() => handleDeleteSport(sportIndex)} className="text-gray-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
+                        </div>
+                        
+                        {/* Lesson Types */}
+                        <div className="space-y-4 pl-4">
+                            {sport.lessonTypes.map((lt, ltIndex) => (
+                                <div key={lt.id} className="p-3 bg-gray-50 rounded-md">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                            <input type="text" value={lt.name} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'name', e.target.value)} className="font-semibold p-1 w-full" />
+                                            <textarea value={lt.description} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'description', e.target.value)} className="text-sm text-gray-600 p-1 w-full mt-1 border rounded-md" placeholder="Descrizione..."/>
                                         </div>
-                                    ))}
-                                    <button onClick={() => handleAddOption(sIndex, ltIndex)} className="text-sm text-primary hover:underline flex items-center">
-                                        <PlusIcon className="w-4 h-4 mr-1" /> Aggiungi Durata
-                                    </button>
-                                </div>
-                                {/* Locations */}
-                                <div>
-                                    <h5 className="font-semibold mb-2">Sedi</h5>
-                                    {lt.locations.map((loc, locIndex) => (
-                                         <div key={loc.id} className="mb-2">
-                                            <div className="flex items-center">
-                                                <input
-                                                    type="text"
-                                                    value={loc.name}
-                                                    onChange={(e) => handleUpdateLocation(sIndex, ltIndex, locIndex, 'name', e.target.value)}
-                                                    className="p-1 border rounded w-full"
-                                                    placeholder="Nome Sede"
-                                                />
-                                                 <button onClick={() => handleDeleteLocation(sIndex, ltIndex, locIndex)} className="ml-2 text-red-500 hover:text-red-700 p-1">
-                                                    <XIcon className="w-4 h-4" />
-                                                </button>
+                                        <button onClick={() => handleDeleteLessonType(sportIndex, ltIndex)} className="ml-2 text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
+                                    </div>
+                                    
+                                    {/* Options */}
+                                    <div className="mt-2 pl-4">
+                                        <h4 className="text-sm font-medium text-gray-700">Opzioni Durata</h4>
+                                        {lt.options.map((opt, optIndex) => (
+                                            <div key={opt.id} className="flex items-center gap-2 mt-1">
+                                                <input type="number" step="15" value={opt.duration} onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} className="w-20 p-1 border rounded-md" />
+                                                <span>minuti</span>
+                                                <button onClick={() => handleDeleteOption(sportIndex, ltIndex, optIndex)} className="text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
                                             </div>
-                                            <input
-                                                type="text"
-                                                value={loc.address}
-                                                onChange={(e) => handleUpdateLocation(sIndex, ltIndex, locIndex, 'address', e.target.value)}
-                                                className="p-1 border rounded w-full mt-1 text-sm"
-                                                placeholder="Indirizzo"
-                                            />
-                                        </div>
-                                    ))}
-                                    <button onClick={() => handleAddLocation(sIndex, ltIndex)} className="text-sm text-primary hover:underline flex items-center">
-                                         <PlusIcon className="w-4 h-4 mr-1" /> Aggiungi Sede
-                                    </button>
+                                        ))}
+                                        <button onClick={() => handleAddOption(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi opzione</button>
+                                    </div>
+                                    
+                                    {/* Locations */}
+                                    <div className="mt-2 pl-4">
+                                        <h4 className="text-sm font-medium text-gray-700">Sedi</h4>
+                                        {lt.locations.map((loc, locIndex) => (
+                                            <div key={loc.id} className="mt-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="text" value={loc.name} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} className="p-1 border rounded-md flex-1" placeholder="Nome Sede"/>
+                                                    <button onClick={() => handleDeleteLocation(sportIndex, ltIndex, locIndex)} className="text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
+                                                </div>
+                                                <input type="text" value={loc.address} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'address', e.target.value)} className="p-1 border rounded-md w-full" placeholder="Indirizzo"/>
+                                            </div>
+                                        ))}
+                                        <button onClick={() => handleAddLocation(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi sede</button>
+                                    </div>
                                 </div>
-                            </div>
+                            ))}
+                             <button onClick={() => handleAddLessonType(sportIndex)} className="text-sm font-semibold text-primary hover:underline mt-3">+ Aggiungi Tipo Lezione</button>
                         </div>
-                    ))}
-                    <button onClick={() => handleAddLessonType(sIndex)} className="mt-2 text-primary hover:underline flex items-center ml-4">
-                        <PlusIcon className="w-5 h-5 mr-1" /> Aggiungi Tipo Lezione
-                    </button>
-                </div>
-            ))}
-            <button onClick={handleAddSport} className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 flex items-center">
-                <PlusIcon className="w-5 h-5 mr-1" /> Aggiungi Sport
-            </button>
-             <div className="mt-6 text-right">
+                    </div>
+                ))}
+            </div>
+            <button onClick={handleAddSport} className="mt-6 w-full text-center bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
+            <div className="mt-8 text-right">
                 <button 
                     onClick={() => onSaveSportsData(sportsData)} 
                     className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
                 >
-                    Salva Modifiche Sport
+                    Salva Modifiche Servizi
                 </button>
             </div>
         </div>
     );
+    
+    const renderIntegrationsTab = () => (
+        <div className="p-6 bg-white rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-4">Integrazione Google Calendar</h3>
+            {!isGapiLoaded || !isGisLoaded ? (
+                <p>Caricamento dei servizi Google in corso...</p>
+            ) : !isGoogleSignedIn ? (
+                <div className="text-center p-8 border-2 border-dashed rounded-lg">
+                    <p className="mb-4 text-gray-600">Connetti il tuo account Google per sincronizzare automaticamente la tua disponibilità e creare eventi per le nuove prenotazioni.</p>
+                    <button onClick={onGoogleSignIn} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                        Accedi con Google
+                    </button>
+                </div>
+            ) : (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <p className="text-green-600 font-semibold">Connesso a Google Calendar.</p>
+                        <button onClick={onGoogleSignOut} className="text-sm text-red-500 hover:underline">Disconnetti</button>
+                    </div>
+                    
+                    <h4 className="font-semibold text-gray-800 mb-2">Seleziona i calendari da sincronizzare</h4>
+                    <p className="text-sm text-gray-500 mb-4">
+                        Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
+                    </p>
 
+                    {isLoadingCalendars ? (
+                        <div className="flex items-center justify-center p-4">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <span className="ml-3 text-gray-600">Caricamento calendari...</span>
+                        </div>
+                    ) : calendarError ? (
+                        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-md">
+                            <p className="font-bold">Errore</p>
+                            <p>{calendarError}</p>
+                        </div>
+                    ) : availableCalendars.length > 0 ? (
+                        <div className="space-y-3 p-4 bg-gray-50 border rounded-md max-h-96 overflow-y-auto">
+                            {availableCalendars.map(cal => (
+                                <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedCalendarIds.includes(cal.id)}
+                                    onChange={() => handleCalendarSelectionChange(cal.id)}
+                                    className="h-5 w-5 text-primary focus:ring-primary border-gray-300 rounded"
+                                />
+                                <span className="ml-3 text-gray-800">{cal.summary}</span>
+                                </label>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-gray-500 p-4 bg-gray-50 border rounded-md">Nessun calendario trovato.</p>
+                    )}
+                    
+                    <div className="mt-6 text-right">
+                        <button 
+                            onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
+                            disabled={isLoadingCalendars}
+                            className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-gray-400"
+                        >
+                            Salva Calendari Selezionati
+                        </button>
+                    </div>
+
+                </div>
+            )}
+        </div>
+    );
+
+    const tabs = [
+        { id: 'profile', label: 'Profilo' },
+        { id: 'hours', label: 'Orari e Disponibilità' },
+        { id: 'services', label: 'Servizi' },
+        { id: 'integrations', label: 'Integrazioni'}
+    ];
 
     return (
-        <div>
-            <header className="p-6 bg-gray-50 border-b flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800">Pannello Amministratore</h2>
-                <div className="flex items-center gap-4">
-                  {isGoogleSignedIn ? (
-                      <button onClick={onGoogleSignOut} className="text-sm font-medium text-gray-600 hover:text-gray-900">
-                          Logout Google Calendar
-                      </button>
-                  ) : (
-                      <button onClick={onGoogleSignIn} disabled={!isGapiLoaded || !isGisLoaded} className="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50">
-                          Login Google Calendar
-                      </button>
-                  )}
-                  <button onClick={onLogout} className="text-sm font-medium text-gray-600 hover:text-primary">
-                      Logout
-                  </button>
+        <div className="flex min-h-screen">
+            {/* Sidebar */}
+            <nav className="w-64 bg-white shadow-md p-4 flex flex-col">
+                <div className="space-y-2 flex-grow">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`w-full text-left font-semibold p-3 rounded-md transition-colors ${
+                                activeTab === tab.id ? 'bg-primary-light text-primary' : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
-            </header>
+                 <button 
+                    onClick={onLogout} 
+                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-600 hover:bg-red-50"
+                >
+                    Logout
+                </button>
+            </nav>
 
-            <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
-                    <button
-                        onClick={() => setActiveTab('profile')}
-                        className={`${
-                            activeTab === 'profile'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                    >
-                        Profilo & Home
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('hours')}
-                        className={`${
-                            activeTab === 'hours'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                    >
-                        Orari & Eccezioni
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('sports')}
-                        className={`${
-                            activeTab === 'sports'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                    >
-                        Sport, Lezioni & Sedi
-                    </button>
-                </nav>
-            </div>
-            
-            {activeTab === 'profile' && renderProfileTab()}
-            {activeTab === 'hours' && renderHoursTab()}
-            {activeTab === 'sports' && renderSportsTab()}
-
+            {/* Content */}
+            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-gray-100 overflow-y-auto">
+                {activeTab === 'profile' && renderProfileTab()}
+                {activeTab === 'hours' && renderHoursTab()}
+                {activeTab === 'services' && renderServicesTab()}
+                {activeTab === 'integrations' && renderIntegrationsTab()}
+            </main>
         </div>
     );
 };

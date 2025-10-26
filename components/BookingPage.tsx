@@ -16,11 +16,12 @@ interface BookingPageProps {
   slotInterval: number;
   consultant: ConsultantInfo;
   isGoogleSignedIn: boolean;
+  selectedCalendarIds: string[];
 }
 
 const BookingPage: React.FC<BookingPageProps> = ({ 
     selection, onBookingConfirmed, onBack, workingHours, 
-    dateOverrides, slotInterval, consultant, isGoogleSignedIn 
+    dateOverrides, slotInterval, consultant, isGoogleSignedIn, selectedCalendarIds
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -66,19 +67,24 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 } as Booking);
             });
 
-            // Fetch events from Google Calendar
+            // Fetch events from all selected Google Calendars
             let calendarEvents: CalendarEvent[] = [];
-            if(isGoogleSignedIn) {
-                const response = await gapi.client.calendar.events.list({
-                    'calendarId': 'primary',
-                    'timeMin': startOfDay.toISOString(),
-                    'timeMax': endOfDay.toISOString(),
-                    'showDeleted': false,
-                    'singleEvents': true,
-                    'orderBy': 'startTime'
-                });
+            if(isGoogleSignedIn && selectedCalendarIds && selectedCalendarIds.length > 0) {
+                 const eventPromises = selectedCalendarIds.map(calendarId => 
+                    gapi.client.calendar.events.list({
+                        'calendarId': calendarId,
+                        'timeMin': startOfDay.toISOString(),
+                        'timeMax': endOfDay.toISOString(),
+                        'showDeleted': false,
+                        'singleEvents': true,
+                        'orderBy': 'startTime'
+                    })
+                );
                 
-                calendarEvents = response.result.items
+                const responses = await Promise.all(eventPromises);
+                const allItems = responses.flatMap(response => response.result.items);
+
+                calendarEvents = allItems
                   .filter((event: any) => 
                     event.status !== 'cancelled' && 
                     (event.start.dateTime || event.start.date) &&
@@ -111,6 +117,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
             setAvailableTimes(times);
         } catch (error) {
             console.error("Error fetching bookings or calendar events:", error);
+            alert("Errore nel caricamento degli eventi da Google Calendar. Controlla la console per i dettagli.");
             setAvailableTimes([]);
         } finally {
             setIsLoading(false);
@@ -122,7 +129,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
       setAvailableTimes([]);
     }
     setSelectedTime(null);
-  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, isGoogleSignedIn]);
+  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, isGoogleSignedIn, selectedCalendarIds]);
 
   const handleDayClick = (day: Date) => {
     if (day.getTime() < new Date(new Date().setHours(0, 0, 0, 0)).getTime()) return;
@@ -259,7 +266,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
         {selectedTime && selectedDate && (
           <div className="flex items-center text-green-600 font-semibold mt-4 pt-4 border-t">
             <CalendarIcon className="w-5 h-5 mr-2" />
-            <span>{`${selectedTime}, ${selectedDate.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}</span>
+            <span>{`${selectedTime}, ${selectedDate.toLocaleString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}</span>
           </div>
         )}
       </div>

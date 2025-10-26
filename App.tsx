@@ -31,6 +31,7 @@ function App() {
   const [dateOverrides, setDateOverrides] = useState<DateOverrides>({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [slotInterval, setSlotInterval] = useState(INITIAL_SLOT_INTERVAL);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
 
   // Auth state
   const [isGoogleSignedIn, setIsGoogleSignedIn] = useState(false);
@@ -54,6 +55,7 @@ function App() {
         setWorkingHours(data.workingHours);
         setDateOverrides(data.dateOverrides);
         setSlotInterval(data.slotInterval || INITIAL_SLOT_INTERVAL);
+        setSelectedCalendarIds(data.googleCalendarIds || []);
       } else {
         // First run: Initialize the config document in Firestore
         console.log("Configuration document not found. Initializing...");
@@ -63,6 +65,7 @@ function App() {
           workingHours: INITIAL_WORKING_HOURS,
           dateOverrides: INITIAL_DATE_OVERRIDES,
           slotInterval: INITIAL_SLOT_INTERVAL,
+          googleCalendarIds: [],
         };
         try {
           await configRef.set(initialConfig);
@@ -282,6 +285,16 @@ function App() {
       alert("Errore nel salvataggio dell'intervallo.");
     }
   }
+
+  const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
+    try {
+      await db.collection('configuration').doc('main').update({ googleCalendarIds: calendarIds });
+      alert('Calendari per la sincronizzazione aggiornati!');
+    } catch (error) {
+      console.error("Error saving selected calendars:", error);
+      alert("Errore nel salvataggio dei calendari selezionati.");
+    }
+  };
   
   const renderLoading = () => (
     <div className="flex justify-center items-center h-[600px]">
@@ -301,11 +314,13 @@ function App() {
         initialDateOverrides={dateOverrides}
         initialConsultantInfo={consultantInfo}
         initialSlotInterval={slotInterval}
+        initialSelectedCalendarIds={selectedCalendarIds}
         onSaveSportsData={handleSaveSportsData}
         onSaveWorkingHours={handleSaveWorkingHours}
         onSaveDateOverrides={handleSaveDateOverrides}
         onSaveConsultantInfo={handleSaveConsultantInfo}
         onSaveSlotInterval={handleSaveSlotInterval}
+        onSaveSelectedCalendars={handleSaveSelectedCalendars}
         onLogout={handleAdminLogout}
         isGoogleSignedIn={isGoogleSignedIn}
         onGoogleSignIn={handleGoogleSignIn}
@@ -332,6 +347,7 @@ function App() {
             slotInterval={slotInterval}
             consultant={consultantInfo}
             isGoogleSignedIn={isGoogleSignedIn}
+            selectedCalendarIds={selectedCalendarIds}
         />;
       case 'confirmation':
          if (!confirmedBooking || !lessonSelection) {
