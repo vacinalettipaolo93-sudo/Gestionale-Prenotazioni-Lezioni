@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon } from './icons';
 
@@ -232,11 +232,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         });
     };
     
+    const handleLocationIntervalChangeByName = (locationName: string, value: string) => {
+        const newInterval = parseInt(value, 10);
+        updateState(setSportsData, (draft) => {
+            draft.forEach(sport => {
+                sport.lessonTypes.forEach(lt => {
+                    lt.locations.forEach(loc => {
+                        if (loc.name === locationName) {
+                            if (newInterval > 0) {
+                                loc.slotInterval = newInterval;
+                            } else {
+                                delete loc.slotInterval;
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    };
+
     const handleDeleteLocation = (sportIndex: number, ltIndex: number, locIndex: number) => {
         updateState(setSportsData, (draft: Sport[]) => {
             draft[sportIndex].lessonTypes[ltIndex].locations.splice(locIndex, 1);
         });
     };
+    
+    const uniqueLocations = useMemo(() => {
+        const locationsMap = new Map<string, Location>();
+        sportsData.forEach(sport => {
+            sport.lessonTypes.forEach(lt => {
+                lt.locations.forEach(loc => {
+                    if (loc.name && !locationsMap.has(loc.name)) {
+                        locationsMap.set(loc.name, loc);
+                    }
+                });
+            });
+        });
+        return Array.from(locationsMap.values());
+    }, [sportsData]);
 
     const renderProfileTab = () => (
         <div className="p-6 max-w-2xl mx-auto">
@@ -298,7 +331,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="p-6">
             {/* Slot Interval */}
             <div className="mb-8 pb-8 border-b">
-                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot</h3>
+                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot Globale</h3>
                  <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">
                     <label htmlFor="slot-interval" className="font-medium text-gray-700">Intervallo prenotazione (minuti):</label>
                     <select
@@ -317,7 +350,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         onClick={() => onSaveSlotInterval(slotInterval)} 
                         className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
                     >
-                        Salva Intervallo
+                        Salva Intervallo Globale
+                    </button>
+                </div>
+            </div>
+            
+            {/* Location Specific Slot Interval */}
+            <div className="mb-8 pb-8 border-b">
+                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot per Sedi</h3>
+                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
+                    {uniqueLocations.map(loc => (
+                        <div key={loc.name} className="flex items-center justify-between gap-4">
+                             <label htmlFor={`slot-interval-${loc.id}`} className="font-medium text-gray-700 flex-1">{loc.name}:</label>
+                             <select
+                                id={`slot-interval-${loc.id}`}
+                                value={loc.slotInterval || 0}
+                                onChange={(e) => handleLocationIntervalChangeByName(loc.name, e.target.value)}
+                                className="p-2 border rounded-md w-48"
+                            >
+                                <option value="0">Default (Globale)</option>
+                                <option value="15">15 minuti</option>
+                                <option value="30">30 minuti</option>
+                                <option value="60">60 minuti</option>
+                            </select>
+                        </div>
+                    ))}
+                 </div>
+                 <div className="mt-4 text-right">
+                    <button 
+                        onClick={() => onSaveSportsData(sportsData)} 
+                        className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                    >
+                        Salva Intervalli Sedi
                     </button>
                 </div>
             </div>

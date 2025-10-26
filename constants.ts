@@ -11,14 +11,12 @@ const TENNIS_SALO: Location = {
     id: 'tennis-salo-canottieri',
     name: 'Tennis Salò Canottieri',
     address: 'Via Maria Montessori, 20, 25087 Salò BS',
-    slotInterval: 15, // Intervallo più granulare per maggiore flessibilità
 };
 
 const TENNIS_GAVARDO: Location = {
     id: 'tennis-club-gavardo',
     name: 'Tennis Club Gavardo',
     address: 'Via delle Polentine, 1, 25085 Gavardo BS',
-    slotInterval: 30, // Intervallo fisso di 30 minuti
 };
 
 

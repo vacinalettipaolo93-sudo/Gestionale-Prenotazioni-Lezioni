@@ -73,8 +73,22 @@ export const generateAvailableTimes = (
   ];
   
   const timeStep = slotInterval;
+  let loopStartTime = start;
 
-  for (let time = start; time < end; time += timeStep) {
+  // Special case: If the interval is 60 minutes, the user wants slots on the half-hour (e.g., 9:30, 10:30)
+  if (timeStep === 60) {
+    const startMinutes = start % 60; // Minutes past the hour for the start time
+    if (startMinutes <= 30) {
+      // If working hours start at 9:00, 9:15, or 9:30, the first slot should be at 9:30
+      loopStartTime = Math.floor(start / 60) * 60 + 30;
+    } else {
+      // If working hours start at 9:45, the first slot can't be until 10:30
+      loopStartTime = Math.floor(start / 60) * 60 + 90; // Next hour's 30-minute mark
+    }
+  }
+
+
+  for (let time = loopStartTime; time < end; time += timeStep) {
     const slotStart = time;
     const slotEnd = time + duration;
 

@@ -4,7 +4,7 @@ export interface Location {
   id: string;
   name: string;
   address: string;
-  slotInterval?: number; // in minutes
+  slotInterval?: number; // Intervallo in minuti, opzionale per questa sede
 }
 
 export interface LessonOption {

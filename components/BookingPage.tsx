@@ -102,8 +102,10 @@ const BookingPage: React.FC<BookingPageProps> = ({
                   });
             }
 
-            // Use location-specific interval if available, otherwise fall back to global interval
-            const effectiveSlotInterval = selection.location.slotInterval || slotInterval;
+            // Use the location-specific interval if available, otherwise fall back to the global setting.
+            const effectiveSlotInterval = selection.location.slotInterval && selection.location.slotInterval > 0
+                ? selection.location.slotInterval
+                : slotInterval;
 
             const times = generateAvailableTimes(selectedDate, selection.option.duration, existingBookings, calendarEvents, workingHours, effectiveSlotInterval, dateOverrides);
             setAvailableTimes(times);
