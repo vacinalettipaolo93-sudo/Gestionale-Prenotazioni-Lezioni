@@ -1,12 +1,16 @@
+import React from 'react';
+
 export interface Location {
   id: string;
   name: string;
   address: string;
+  slotInterval?: number; // Intervallo in minuti, opzionale per questa sede
+  googleCalendarId?: string; // ID del calendario Google per questa sede
 }
 
 export interface LessonOption {
   id: string;
-  duration: number;
+  duration: number; // in minutes
 }
 
 export interface LessonType {
@@ -21,8 +25,29 @@ export interface Sport {
   id: string;
   name: string;
   color: string;
-  icon: string;
+  icon?: string;
   lessonTypes: LessonType[];
+  googleCalendarId?: string; // ID del calendario Google per questo sport
+}
+
+export interface Booking {
+  sportId: string;
+  lessonTypeId: string;
+  duration: number;
+  location: Location;
+  startTime: Date;
+  name: string;
+  email: string;
+  phone: string;
+  participants: string[];
+}
+
+// Represents the user's final selection before navigating to the booking page
+export interface LessonSelection {
+    sport: Sport;
+    lessonType: LessonType;
+    option: LessonOption;
+    location: Location;
 }
 
 export interface ConsultantInfo {
@@ -30,33 +55,25 @@ export interface ConsultantInfo {
   title: string;
   avatarUrl: string;
   welcomeMessage: string;
+  email?: string; // Email for notifications
 }
 
-export interface LessonSelection {
-  sport: Sport;
-  lessonType: LessonType;
-  option: LessonOption;
-  location: Location;
-}
-
-export interface Booking {
-  id?: string;
-  startTime: Date;
-  duration: number;
-  location: Location;
-  lessonTypeId: string;
-  name: string;
-  email: string;
-  phone: string;
-  participants: string[];
-}
-
-// Key is the day of the week (0=Sun, 1=Mon, ...)
 export interface WorkingHours {
-  [key: number]: { start: number; end: number } | null;
+  [key: number]: { start: number; end: number } | null; // 0 for Sunday, 1 for Monday...
 }
 
-// Key is date in 'YYYY-MM-DD' format
 export interface DateOverrides {
-    [key: string]: { start: number; end: number } | null;
+  [date: string]: { start: number; end: number } | null; // Key is 'YYYY-MM-DD'
+}
+
+/**
+ * Represents the structure of the main configuration document in Firestore.
+ */
+export interface AppConfig {
+  sportsData: Sport[];
+  consultantInfo: ConsultantInfo;
+  workingHours: WorkingHours;
+  dateOverrides: DateOverrides;
+  slotInterval: number;
+  googleCalendarIds?: string[];
 }

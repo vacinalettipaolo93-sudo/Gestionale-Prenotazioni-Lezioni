@@ -5,6 +5,7 @@ export const INITIAL_CONSULTANT_INFO: ConsultantInfo = {
   title: 'Maestro di Tennis & Padel',
   avatarUrl: 'https://picsum.photos/seed/teacher/200/200',
   welcomeMessage: 'Benvenuto nella mia pagina di prenotazione. Inizia selezionando lo sport che preferisci.',
+  email: 'esempio@iltuodominio.com',
 };
 
 const TENNIS_SALO: Location = {
