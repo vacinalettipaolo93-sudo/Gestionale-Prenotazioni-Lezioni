@@ -1,4 +1,4 @@
-import type { Sport, Booking, ConsultantInfo, WorkingHours, Location } from './types';
+import type { Sport, ConsultantInfo, WorkingHours, Location, DateOverrides } from './types';
 import { BallIcon } from './components/icons';
 
 export const INITIAL_CONSULTANT_INFO: ConsultantInfo = {
@@ -11,13 +11,15 @@ export const INITIAL_CONSULTANT_INFO: ConsultantInfo = {
 const TENNIS_SALO: Location = {
     id: 'tennis-salo-canottieri',
     name: 'Tennis Salò Canottieri',
-    address: 'Via Maria Montessori, 20, 25087 Salò BS'
+    address: 'Via Maria Montessori, 20, 25087 Salò BS',
+    slotInterval: 15, // Intervallo più granulare per maggiore flessibilità
 };
 
 const TENNIS_GAVARDO: Location = {
     id: 'tennis-club-gavardo',
     name: 'Tennis Club Gavardo',
-    address: 'Via delle Polentine, 1, 25085 Gavardo BS'
+    address: 'Via delle Polentine, 1, 25085 Gavardo BS',
+    slotInterval: 30, // Intervallo fisso di 30 minuti
 };
 
 
@@ -33,8 +35,8 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
         name: 'Lezione Individuale',
         description: 'Lezione one-to-one per migliorare la tecnica e la strategia.',
         options: [
-          { duration: 60 },
-          { duration: 90 },
+          { id: 'tennis-ind-60', duration: 60 },
+          { id: 'tennis-ind-90', duration: 90 },
         ],
         locations: [TENNIS_SALO, TENNIS_GAVARDO],
       },
@@ -43,7 +45,7 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
         name: 'Lezione di Gruppo (Max 4 persone)',
         description: 'Allenamento di gruppo per esercitarsi in situazioni di gioco reali.',
         options: [
-          { duration: 60 },
+          { id: 'tennis-grp-60', duration: 60 },
         ],
         locations: [TENNIS_GAVARDO],
       },
@@ -60,7 +62,7 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
             name: 'Lezione Individuale Padel',
             description: 'Migliora la tecnica del padel con un istruttore dedicato.',
             options: [
-              { duration: 60 },
+              { id: 'padel-ind-60', duration: 60 },
             ],
             locations: [TENNIS_SALO],
         },
@@ -69,7 +71,7 @@ export const INITIAL_SPORTS_DATA: Sport[] = [
             name: 'Lezione di Coppia Padel',
             description: 'Allenati con un partner per affinare la strategia di gioco.',
             options: [
-              { duration: 90 },
+              { id: 'padel-cop-90', duration: 90 },
             ],
             locations: [TENNIS_SALO],
         }
@@ -89,28 +91,4 @@ export const INITIAL_WORKING_HOURS: WorkingHours = {
   6: { start: 9 * 60, end: 13 * 60 }, // Saturday 9:00 - 13:00
 };
 
-// Mocked existing bookings. In a real app, this would be fetched from Firebase.
-const today = new Date();
-const tomorrow = new Date();
-tomorrow.setDate(today.getDate() + 1);
-
-export const EXISTING_BOOKINGS: Booking[] = [
-  {
-    sportId: 'tennis',
-    lessonTypeId: 'tennis-individuale',
-    duration: 60,
-    location: TENNIS_GAVARDO,
-    startTime: new Date(new Date(tomorrow).setHours(10, 0, 0, 0)),
-    name: 'Luca Bianchi',
-    email: 'luca@example.com',
-  },
-  {
-    sportId: 'padel',
-    lessonTypeId: 'padel-coppia',
-    duration: 90,
-    location: TENNIS_SALO,
-    startTime: new Date(new Date(tomorrow).setHours(14, 0, 0, 0)),
-    name: 'Giulia Verdi',
-    email: 'giulia@example.com',
-  },
-];
+export const INITIAL_DATE_OVERRIDES: DateOverrides = {};

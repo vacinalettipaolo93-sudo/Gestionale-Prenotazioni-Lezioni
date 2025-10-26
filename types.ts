@@ -1,11 +1,16 @@
+
+import React from 'react';
+
 export interface Location {
   id: string;
   name: string;
   address: string;
+  slotInterval?: number; // in minutes
 }
 
 export interface LessonOption {
-  duration: number;
+  id: string;
+  duration: number; // in minutes
 }
 
 export interface LessonType {
@@ -25,7 +30,6 @@ export interface Sport {
 }
 
 export interface Booking {
-  id?: string;
   sportId: string;
   lessonTypeId: string;
   duration: number;
@@ -35,6 +39,7 @@ export interface Booking {
   email: string;
 }
 
+// Represents the user's final selection before navigating to the booking page
 export interface LessonSelection {
     sport: Sport;
     lessonType: LessonType;
@@ -50,5 +55,9 @@ export interface ConsultantInfo {
 }
 
 export interface WorkingHours {
-  [key: number]: { start: number; end: number } | null;
+  [key: number]: { start: number; end: number } | null; // 0 for Sunday, 1 for Monday...
+}
+
+export interface DateOverrides {
+  [date: string]: { start: number; end: number } | null; // Key is 'YYYY-MM-DD'
 }

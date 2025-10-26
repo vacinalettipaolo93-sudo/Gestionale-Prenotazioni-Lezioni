@@ -1,19 +1,29 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { LessonSelection, Booking, WorkingHours, ConsultantInfo } from '../types';
-import { generateAvailableTimes, getDaysInMonth, getMonthName, getYear } from '../utils/date';
+import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverrides } from '../types';
+import { generateAvailableTimes, CalendarEvent } from '../utils/date';
+import { getDaysInMonth, getMonthName, getYear } from '../utils/date';
 import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon } from './icons';
+import { db } from '../firebaseConfig';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
+
+declare const gapi: any;
 
 interface BookingPageProps {
   selection: LessonSelection;
   onBookingConfirmed: (booking: Booking) => void;
   onBack: () => void;
   workingHours: WorkingHours;
+  dateOverrides: DateOverrides;
   slotInterval: number;
   consultant: ConsultantInfo;
-  bookings: Booking[];
+  isGoogleSignedIn: boolean;
 }
 
-const BookingPage: React.FC<BookingPageProps> = ({ selection, onBookingConfirmed, onBack, workingHours, slotInterval, consultant, bookings }) => {
+const BookingPage: React.FC<BookingPageProps> = ({ 
+    selection, onBookingConfirmed, onBack, workingHours, 
+    dateOverrides, slotInterval, consultant, isGoogleSignedIn 
+}) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -30,16 +40,69 @@ const BookingPage: React.FC<BookingPageProps> = ({ selection, onBookingConfirmed
   useEffect(() => {
     if (selectedDate) {
       setIsLoading(true);
-      setTimeout(() => {
-        const times = generateAvailableTimes(selectedDate, selection.option.duration, bookings, workingHours, slotInterval);
-        setAvailableTimes(times);
-        setIsLoading(false);
-      }, 300);
+      
+      const fetchBookingsAndGenerateTimes = async () => {
+        try {
+            // Fetch bookings from Firestore
+            const startOfDay = new Date(selectedDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(selectedDate);
+            endOfDay.setHours(23, 59, 59, 999);
+
+            const bookingsRef = db.collection("bookings");
+            const q = bookingsRef
+                .where("startTime", ">=", firebase.firestore.Timestamp.fromDate(startOfDay))
+                .where("startTime", "<=", firebase.firestore.Timestamp.fromDate(endOfDay));
+            
+            const querySnapshot = await q.get();
+            const existingBookings: Booking[] = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                existingBookings.push({
+                    ...data,
+                    startTime: (data.startTime as firebase.firestore.Timestamp).toDate(),
+                } as Booking);
+            });
+
+            // Fetch events from Google Calendar
+            let calendarEvents: CalendarEvent[] = [];
+            if(isGoogleSignedIn) {
+                const response = await gapi.client.calendar.events.list({
+                    'calendarId': 'primary',
+                    'timeMin': startOfDay.toISOString(),
+                    'timeMax': endOfDay.toISOString(),
+                    'showDeleted': false,
+                    'singleEvents': true,
+                    'orderBy': 'startTime'
+                });
+                
+                calendarEvents = response.result.items
+                  .filter((event: any) => event.status !== 'cancelled' && event.start.dateTime) // Filter out cancelled and all-day events
+                  .map((event: any) => ({
+                    startTime: new Date(event.start.dateTime),
+                    endTime: new Date(event.end.dateTime),
+                }));
+            }
+
+            // Use location-specific interval if available, otherwise fall back to global interval
+            const effectiveSlotInterval = selection.location.slotInterval || slotInterval;
+
+            const times = generateAvailableTimes(selectedDate, selection.option.duration, existingBookings, calendarEvents, workingHours, effectiveSlotInterval, dateOverrides);
+            setAvailableTimes(times);
+        } catch (error) {
+            console.error("Error fetching bookings or calendar events:", error);
+            setAvailableTimes([]);
+        } finally {
+            setIsLoading(false);
+        }
+      }
+      
+      fetchBookingsAndGenerateTimes();
     } else {
       setAvailableTimes([]);
     }
     setSelectedTime(null);
-  }, [selectedDate, selection.option.duration, workingHours, slotInterval, bookings]);
+  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, isGoogleSignedIn]);
 
   const handleDayClick = (day: Date) => {
     if (day.getTime() < new Date(new Date().setHours(0, 0, 0, 0)).getTime()) return;
@@ -59,28 +122,60 @@ const BookingPage: React.FC<BookingPageProps> = ({ selection, onBookingConfirmed
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !selectedTime || !selectedDate) return;
-
+    
     setIsSubmitting(true);
-    setTimeout(() => {
-      const [hours, minutes] = selectedTime.split(':').map(Number);
-      const bookingTime = new Date(selectedDate);
-      bookingTime.setHours(hours, minutes);
 
-      const newBooking: Booking = {
-        sportId: selection.sport.id,
-        lessonTypeId: selection.lessonType.id,
-        duration: selection.option.duration,
-        location: selection.location,
-        startTime: bookingTime,
-        name,
-        email,
-      };
-      onBookingConfirmed(newBooking);
-      setIsSubmitting(false);
-    }, 1000);
+    try {
+        const [hours, minutes] = selectedTime.split(':').map(Number);
+        const bookingStartTime = new Date(selectedDate);
+        bookingStartTime.setHours(hours, minutes);
+        
+        const bookingEndTime = new Date(bookingStartTime.getTime() + selection.option.duration * 60000);
+
+        const newBooking = {
+            sportId: selection.sport.id,
+            lessonTypeId: selection.lessonType.id,
+            duration: selection.option.duration,
+            location: selection.location,
+            startTime: firebase.firestore.Timestamp.fromDate(bookingStartTime),
+            name,
+            email,
+        };
+
+        await db.collection("bookings").add(newBooking);
+
+        // Create event in Google Calendar
+        if (isGoogleSignedIn) {
+            const event = {
+                'summary': `${selection.lessonType.name} con ${name}`,
+                'location': selection.location.address,
+                'description': `Prenotazione effettuata da ${name} (${email}).`,
+                'start': {
+                    'dateTime': bookingStartTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                },
+                'end': {
+                    'dateTime': bookingEndTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                },
+            };
+
+            await gapi.client.calendar.events.insert({
+                'calendarId': 'primary',
+                'resource': event,
+            });
+        }
+        
+        onBookingConfirmed({ ...newBooking, startTime: bookingStartTime });
+    } catch (error) {
+        console.error("Error adding document or calendar event: ", error);
+        alert("Si è verificato un errore durante la prenotazione. Riprova.");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const weekDays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];

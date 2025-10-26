@@ -1,4 +1,9 @@
-import type { Booking, WorkingHours } from '../types';
+import type { Booking, WorkingHours, DateOverrides } from '../types';
+
+export interface CalendarEvent {
+    startTime: Date;
+    endTime: Date;
+}
 
 export const getMonthName = (date: Date): string => {
   return date.toLocaleString('it-IT', { month: 'long' });
@@ -29,27 +34,44 @@ export const generateAvailableTimes = (
   date: Date, 
   duration: number, 
   existingBookings: Booking[],
+  calendarEvents: CalendarEvent[],
   workingHoursConfig: WorkingHours,
-  slotInterval: number
+  slotInterval: number,
+  dateOverrides: DateOverrides
 ): string[] => {
-  const dayOfWeek = date.getDay();
-  const workingHours = workingHoursConfig[dayOfWeek];
+  const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+  const override = dateOverrides[dateKey];
+  
+  let workingHours: { start: number; end: number } | null;
+
+  if (override !== undefined) {
+    // An override exists for this date. It can be custom hours or null (unavailable).
+    workingHours = override;
+  } else {
+    // No override, fall back to the weekly schedule.
+    const dayOfWeek = date.getDay();
+    workingHours = workingHoursConfig[dayOfWeek];
+  }
 
   if (!workingHours) {
-    return []; // Not a working day
+    return []; // Not a working day or explicitly set to unavailable
   }
 
   const { start, end } = workingHours;
   const times: string[] = [];
 
-  // Filter bookings for the selected date
-  const todaysBookings = existingBookings.filter(booking => {
-    return booking.startTime.getFullYear() === date.getFullYear() &&
-           booking.startTime.getMonth() === date.getMonth() &&
-           booking.startTime.getDate() === date.getDate();
-  });
-
-  // Check slots based on the provided interval
+  // Combine bookings from Firestore and events from Google Calendar into a single list of busy slots
+  const allBusySlots = [
+    ...existingBookings.map(b => ({
+      start: b.startTime.getHours() * 60 + b.startTime.getMinutes(),
+      end: b.startTime.getHours() * 60 + b.startTime.getMinutes() + b.duration
+    })),
+    ...calendarEvents.map(e => ({
+      start: e.startTime.getHours() * 60 + e.startTime.getMinutes(),
+      end: e.endTime.getHours() * 60 + e.endTime.getMinutes()
+    }))
+  ];
+  
   const timeStep = slotInterval;
 
   for (let time = start; time < end; time += timeStep) {
@@ -65,13 +87,10 @@ export const generateAvailableTimes = (
     // Don't show slots in the past
     if (slotStartTime.getTime() < new Date().getTime()) continue;
 
-    // Check for conflicts with existing bookings
-    const isConflict = todaysBookings.some(booking => {
-      const bookingStart = booking.startTime.getHours() * 60 + booking.startTime.getMinutes();
-      const bookingEnd = bookingStart + booking.duration;
-      
+    // Check for conflicts with all busy slots
+    const isConflict = allBusySlots.some(busySlot => {
       // Check for overlap: (StartA < EndB) and (EndA > StartB)
-      return slotStart < bookingEnd && slotEnd > bookingStart;
+      return slotStart < busySlot.end && slotEnd > busySlot.start;
     });
 
     if (!isConflict) {

@@ -1,139 +1,272 @@
-import React, { useState } from 'react';
-import type { LessonSelection, Booking } from './types';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
 import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import { CogIcon } from './components/icons';
+import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport } from './types';
+import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES } from './constants';
+import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
 
-import { useSports } from './hooks/useSports';
-import { useWorkingHours } from './hooks/useWorkingHours';
-import { useConsultant } from './hooks/useConsultant';
-import { useBookings } from './hooks/useBookings';
+declare const gapi: any;
+// FIX: Augment the window interface to include the 'google' object from the Google Identity Services script.
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
-const defaultConsultant = {
-  name: '',
-  title: '',
-  avatarUrl: '',
-  welcomeMessage: ''
-};
-
-const App: React.FC = () => {
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-
-  const { sports } = useSports();
-  const { workingHours, updateWorkingHours } = useWorkingHours();
-  const { consultant, updateConsultant } = useConsultant();
-  const { bookings, addBooking } = useBookings();
-
-  const [slotInterval, setSlotInterval] = useState<number>(15);
-  const [currentView, setCurrentView] = useState('selection');
-  const [selection, setSelection] = useState<LessonSelection | null>(null);
+function App() {
+  const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
+  const [lessonSelection, setLessonSelection] = useState<LessonSelection | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  
+  // App data state
+  const [sportsData, setSportsData] = useState<Sport[]>(INITIAL_SPORTS_DATA);
+  const [consultantInfo, setConsultantInfo] = useState(INITIAL_CONSULTANT_INFO);
+  const [workingHours, setWorkingHours] = useState<WorkingHours>(INITIAL_WORKING_HOURS);
+  const [dateOverrides, setDateOverrides] = useState<DateOverrides>(INITIAL_DATE_OVERRIDES);
+  const [slotInterval, setSlotInterval] = useState(30); // Default slot interval
 
-  const handleLoginSuccess = () => {
-    setIsAdmin(true);
-    setIsLoginModalOpen(false);
-  };
+  // Auth state
+  const [isGoogleSignedIn, setIsGoogleSignedIn] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  
+  // Google API state
+  const [gapiLoaded, setGapiLoaded] = useState(false);
+  const [gisLoaded, setGisLoaded] = useState(false);
+  const [tokenClient, setTokenClient] = useState<any>(null);
 
-  const handleLogout = () => setIsAdmin(false);
+  // --- GOOGLE API INITIALIZATION ---
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      gapi.load('client', initializeGapiClient);
+      setGapiLoaded(true);
+    };
+    document.body.appendChild(script);
 
-  const handleSelectionComplete = (selectedLesson: LessonSelection) => {
-    setSelection(selectedLesson);
-    setCurrentView('booking');
-  };
+    const script2 = document.createElement('script');
+    script2.src = 'https://accounts.google.com/gsi/client';
+    script2.onload = () => {
+        setGisLoaded(true);
+    };
+    document.body.appendChild(script2);
+    
+    return () => {
+        // Clean up scripts on component unmount
+        document.body.removeChild(script);
+        document.body.removeChild(script2);
+    }
+  }, []);
 
-  const handleBookingConfirmed = async (booking: Booking) => {
-    await addBooking(booking);
-    setConfirmedBooking(booking);
-    setCurrentView('confirmation');
-  };
+  const initializeGapiClient = useCallback(async () => {
+    try {
+      if (API_KEY.startsWith("INSERISCI_")) {
+        throw new Error("Configurazione Google API incompleta: Per favore, inserisci la tua API Key nel file googleConfig.ts.");
+      }
+      await gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: DISCOVERY_DOCS,
+      });
+    } catch (error: any) {
+        console.error("Error initializing Google API client:", error);
+        if (error.result?.error?.message) {
+             alert(`Errore nell'inizializzazione di Google API: ${error.result.error.message}. Controlla la tua API Key.`);
+        } else {
+             alert(error.message || "Errore nell'inizializzazione di Google API. Controlla che la API Key sia corretta e che la Google Calendar API sia abilitata nel tuo progetto Google Cloud.");
+        }
+    }
+  }, []);
 
-  const handleBackToSelection = () => {
-    setSelection(null);
-    setCurrentView('selection');
-  };
+  const initializeGisClient = useCallback(() => {
+    try {
+      if (CLIENT_ID.startsWith("INSERISCI_")) {
+        throw new Error("Configurazione Google API incompleta: Per favore, inserisci il tuo Client ID nel file googleConfig.ts.");
+      }
+      if (window.google?.accounts?.oauth2) {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: (tokenResponse: any) => {
+              if (tokenResponse.error) {
+                  console.error('Google token error:', tokenResponse);
+                  alert(`Accesso a Google fallito: ${tokenResponse.error_description || tokenResponse.error}. Controlla che il tuo Client ID sia configurato correttamente.`);
+                  return;
+              }
+              if (tokenResponse && tokenResponse.access_token) {
+                  gapi.client.setToken(tokenResponse);
+                  setIsGoogleSignedIn(true);
+              }
+          },
+        });
+        setTokenClient(client);
+      } else {
+        throw new Error("Lo script di Google Identity Services non è stato caricato correttamente.");
+      }
+    } catch(error: any) {
+        console.error("Error initializing Google Identity Services:", error);
+        alert(error.message || "Impossibile inizializzare l'accesso con Google. Controlla che il Client ID in googleConfig.ts sia corretto.");
+    }
+  }, []);
+  
+  useEffect(() => {
+    if (gapiLoaded && gisLoaded) {
+      initializeGisClient();
+    }
+  }, [gapiLoaded, gisLoaded, initializeGisClient]);
 
-  const handleBookAnother = () => {
-    setSelection(null);
-    setConfirmedBooking(null);
-    setCurrentView('selection');
-  };
-
-  const renderUserContent = () => {
-    switch (currentView) {
-      case 'confirmation':
-        return (
-          <ConfirmationPage
-            booking={confirmedBooking!}
-            selection={selection!}
-            consultant={consultant ?? defaultConsultant}
-            onBookAnother={handleBookAnother}
-          />
-        );
-      case 'booking':
-        return (
-          <BookingPage
-            selection={selection!}
-            onBookingConfirmed={handleBookingConfirmed}
-            onBack={handleBackToSelection}
-            workingHours={workingHours}
-            slotInterval={slotInterval}
-            consultant={consultant ?? defaultConsultant}
-            bookings={bookings}
-          />
-        );
-      case 'selection':
-      default:
-        return (
-          <EventTypeSelection
-            sports={sports}
-            onSelectionComplete={handleSelectionComplete}
-            consultant={consultant ?? defaultConsultant}
-          />
-        );
+  // --- GOOGLE AUTH HANDLERS ---
+  const handleGoogleSignIn = () => {
+    if (tokenClient) {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-4xl relative">
-        {!isAdmin && (
-          <button
-            onClick={() => setIsLoginModalOpen(true)}
-            className="absolute top-2 right-2 p-2 text-gray-500 hover:text-primary transition-colors z-10"
-            aria-label="Accesso Amministratore"
-          >
-            <CogIcon className="w-6 h-6" />
-          </button>
-        )}
-      </div>
-      <main className="w-full max-w-4xl bg-white shadow-2xl rounded-lg overflow-hidden my-4">
-        {isAdmin ? (
-          <AdminPanel
-            sports={sports}
+  const handleGoogleSignOut = () => {
+    const token = gapi.client.getToken();
+    if (token !== null) {
+      window.google.accounts.oauth2.revoke(token.access_token, () => {
+        gapi.client.setToken('');
+        setIsGoogleSignedIn(false);
+      });
+    }
+  };
+
+  // --- NAVIGATION HANDLERS ---
+  const handleSelectionComplete = (selection: LessonSelection) => {
+    setLessonSelection(selection);
+    setCurrentPage('booking');
+  };
+
+  const handleBookingConfirmed = (booking: Booking) => {
+    setConfirmedBooking(booking);
+    setCurrentPage('confirmation');
+  };
+  
+  const handleBackFromBooking = () => {
+    setCurrentPage('selection');
+    setLessonSelection(null);
+  }
+
+  const handleBookAnother = () => {
+    setCurrentPage('selection');
+    setLessonSelection(null);
+    setConfirmedBooking(null);
+  };
+  
+  // --- ADMIN HANDLERS ---
+  const handleAdminLoginSuccess = () => {
+    setIsAdminLoggedIn(true);
+    setIsLoginModalOpen(false);
+  }
+  
+  const handleAdminLogout = () => {
+    setIsAdminLoggedIn(false);
+  }
+
+  const handleSaveWorkingHours = (newHours: WorkingHours) => {
+    setWorkingHours(newHours);
+    // Here you would typically save to a backend/DB
+    alert('Orari di lavoro aggiornati!');
+  }
+  
+  const handleSaveDateOverrides = (newOverrides: DateOverrides) => {
+    setDateOverrides(newOverrides);
+    // Here you would typically save to a backend/DB
+    alert('Eccezioni del calendario aggiornate!');
+  }
+  
+  const handleSaveSportsData = (newSportsData: Sport[]) => {
+    setSportsData(newSportsData);
+    alert('Dati di sport, lezioni e sedi aggiornati!');
+  }
+
+  const renderContent = () => {
+    if (isAdminLoggedIn) {
+      return <AdminPanel 
+        initialSportsData={sportsData}
+        initialWorkingHours={workingHours}
+        initialDateOverrides={dateOverrides}
+        onSaveSportsData={handleSaveSportsData}
+        onSaveWorkingHours={handleSaveWorkingHours}
+        onSaveDateOverrides={handleSaveDateOverrides}
+        onLogout={handleAdminLogout}
+      />;
+    }
+
+    switch (currentPage) {
+      case 'selection':
+        return <EventTypeSelection sports={sportsData} onSelectionComplete={handleSelectionComplete} consultant={consultantInfo} />;
+      case 'booking':
+        if (!lessonSelection) {
+            // Should not happen, but as a fallback
+            setCurrentPage('selection');
+            return null;
+        }
+        return <BookingPage 
+            selection={lessonSelection} 
+            onBookingConfirmed={handleBookingConfirmed} 
+            onBack={handleBackFromBooking}
             workingHours={workingHours}
+            dateOverrides={dateOverrides}
             slotInterval={slotInterval}
-            setSlotInterval={setSlotInterval}
-            consultant={consultant ?? defaultConsultant}
-            updateWorkingHours={updateWorkingHours}
-            updateConsultant={updateConsultant}
-            onLogout={handleLogout}
-          />
-        ) : (
-          renderUserContent()
-        )}
+            consultant={consultantInfo}
+            isGoogleSignedIn={isGoogleSignedIn}
+        />;
+      case 'confirmation':
+         if (!confirmedBooking || !lessonSelection) {
+            // Should not happen, but as a fallback
+            setCurrentPage('selection');
+            return null;
+        }
+        return <ConfirmationPage booking={confirmedBooking} selection={lessonSelection} consultant={consultantInfo} onBookAnother={handleBookAnother} />;
+      default:
+        return <div>Error: Invalid page state.</div>;
+    }
+  };
+  
+  return (
+    <div className="bg-gray-100 min-h-screen font-sans">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-primary">Prenotazione Lezioni</h1>
+            <div className="flex items-center gap-4">
+              {!isAdminLoggedIn && (
+                isGoogleSignedIn ? (
+                  <button onClick={handleGoogleSignOut} className="text-sm font-medium text-gray-600 hover:text-gray-900">
+                    Logout Google Calendar
+                  </button>
+                ) : (
+                  <button onClick={handleGoogleSignIn} disabled={!gapiLoaded || !gisLoaded} className="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50">
+                    Login Google Calendar
+                  </button>
+                )
+              )}
+              <button onClick={() => setIsLoginModalOpen(true)} title="Admin Login" className="text-gray-500 hover:text-primary">
+                <CogIcon className="w-6 h-6" />
+              </button>
+            </div>
+        </div>
+      </header>
+      <main className="max-w-5xl mx-auto my-6 sm:my-8">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          {renderContent()}
+        </div>
       </main>
-      {isLoginModalOpen && (
-        <LoginModal
+      
+      {isLoginModalOpen && !isAdminLoggedIn && (
+        <LoginModal 
           onClose={() => setIsLoginModalOpen(false)}
-          onLoginSuccess={handleLoginSuccess}
+          onLoginSuccess={handleAdminLoginSuccess}
         />
       )}
     </div>
   );
-};
+}
 
 export default App;
