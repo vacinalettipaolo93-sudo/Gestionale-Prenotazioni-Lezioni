@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Booking, LessonSelection, ConsultantInfo } from '../types';
-import { CheckCircleIcon, CalendarIcon, ClockIcon, UserIcon, LocationMarkerIcon, PhoneIcon } from './icons';
+import { CheckCircleIcon, CalendarIcon, ClockIcon, UserIcon, LocationMarkerIcon, PhoneIcon, CalendarPlusIcon } from './icons';
 
 interface ConfirmationPageProps {
   booking: Booking;
@@ -25,6 +25,47 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  // --- Funzioni per "Aggiungi al Calendario" ---
+
+  const formatDateForCalendar = (date: Date) => {
+    return date.toISOString().replace(/-|:|\.\d{3}/g, '');
+  };
+
+  const startTime = booking.startTime;
+  const endTime = new Date(startTime.getTime() + booking.duration * 60000);
+  
+  // Google Calendar Link
+  const googleCalendarUrl = () => {
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `${selection.lessonType.name} con ${consultant.name}`,
+      dates: `${formatDateForCalendar(startTime)}/${formatDateForCalendar(endTime)}`,
+      details: `Lezione di ${selection.sport.name} con ${consultant.name}.\nPartecipanti: ${booking.name}${booking.participants.length > 0 ? ', ' + booking.participants.join(', ') : ''}.`,
+      location: `${booking.location.name}, ${booking.location.address}`,
+      ctz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    return `https://www.google.com/calendar/render?${params.toString()}`;
+  };
+
+  // ICS File Link
+  const icsFileHref = () => {
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      `DTSTAMP:${formatDateForCalendar(new Date())}`,
+      `DTSTART:${formatDateForCalendar(startTime)}`,
+      `DTEND:${formatDateForCalendar(endTime)}`,
+      `SUMMARY:${selection.lessonType.name} con ${consultant.name}`,
+      `DESCRIPTION:Lezione di ${selection.sport.name} con ${consultant.name}.\\nPartecipanti: ${booking.name}${booking.participants.length > 0 ? ', ' + booking.participants.join(', ') : ''}.`,
+      `LOCATION:${booking.location.name}, ${booking.location.address}`,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\n');
+    return `data:text/calendar;charset=utf-8,${encodeURIComponent(icsContent)}`;
+  };
+
 
   return (
     <div className="p-8 text-center flex flex-col items-center justify-center min-h-[500px]">
@@ -84,6 +125,30 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
             La prenotazione sarà confermata per messaggio previa verifica disponibilità campo
          </p>
       </div>
+
+      <div className="mt-8 w-full max-w-md">
+        <h3 className="text-lg font-semibold text-gray-700 mb-3">Aggiungi al tuo calendario</h3>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <a
+            href={googleCalendarUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <CalendarPlusIcon className="w-5 h-5"/>
+            Google Calendar
+          </a>
+          <a
+            href={icsFileHref()}
+            download="lezione.ics"
+            className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <CalendarPlusIcon className="w-5 h-5"/>
+            Altro Calendario (ICS)
+          </a>
+        </div>
+      </div>
+
 
       <button
         onClick={onBookAnother}
