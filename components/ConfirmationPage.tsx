@@ -68,34 +68,34 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
 
 
   return (
-    <div className="p-8 text-center flex flex-col items-center justify-center min-h-[500px]">
+    <div className="p-8 text-center flex flex-col items-center justify-center min-h-[600px]">
       <CheckCircleIcon className="w-16 h-16 text-green-500 mb-4" />
-      <h2 className="text-3xl font-bold text-gray-800">Confermato!</h2>
-      <p className="text-gray-600 mt-2">Hai prenotato con successo la tua lezione con {consultant.name}.</p>
+      <h2 className="text-3xl font-bold text-neutral-800">Confermato!</h2>
+      <p className="text-neutral-400 mt-2">Hai prenotato con successo la tua lezione con {consultant.name}.</p>
       
-      <div className="text-left bg-gray-50 border border-gray-200 rounded-lg p-6 mt-8 w-full max-w-md">
-        <h3 className="text-xl font-semibold text-gray-800 mb-4">{selection.lessonType.name}</h3>
-        <div className="space-y-3 text-gray-700">
+      <div className="text-left bg-neutral-100 border border-neutral-200 rounded-lg p-6 mt-8 w-full max-w-md">
+        <h3 className="text-xl font-semibold text-neutral-800 mb-4">{selection.lessonType.name}</h3>
+        <div className="space-y-3 text-neutral-600">
           <div className="flex items-center">
-            <UserIcon className="w-5 h-5 mr-3 text-gray-500" />
+            <UserIcon className="w-5 h-5 mr-3 text-neutral-400" />
             <span>{consultant.name}</span>
           </div>
           <div className="flex items-center">
-            <CalendarIcon className="w-5 h-5 mr-3 text-gray-500" />
+            <CalendarIcon className="w-5 h-5 mr-3 text-neutral-400" />
             <span>{formattedDate}</span>
           </div>
           <div className="flex items-center">
-            <ClockIcon className="w-5 h-5 mr-3 text-gray-500" />
+            <ClockIcon className="w-5 h-5 mr-3 text-neutral-400" />
             <span>{formattedTime} ({booking.duration} min)</span>
           </div>
            <div className="flex items-center">
-            <PhoneIcon className="w-5 h-5 mr-3 text-gray-500" />
+            <PhoneIcon className="w-5 h-5 mr-3 text-neutral-400" />
             <span>{booking.phone}</span>
           </div>
           <div className="flex items-start">
-            <LocationMarkerIcon className="w-5 h-5 mr-3 text-gray-500 mt-1 flex-shrink-0" />
+            <LocationMarkerIcon className="w-5 h-5 mr-3 text-neutral-400 mt-1 flex-shrink-0" />
             <div>
-              <span className="font-semibold block">{booking.location.name}</span>
+              <span className="font-semibold block text-neutral-800">{booking.location.name}</span>
               <a 
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location.address)}`}
                 target="_blank"
@@ -108,32 +108,32 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
           </div>
           {booking.participants && booking.participants.length > 0 && (
              <div className="flex items-start">
-                <UserIcon className="w-5 h-5 mr-3 text-gray-500 mt-1 flex-shrink-0" />
+                <UserIcon className="w-5 h-5 mr-3 text-neutral-400 mt-1 flex-shrink-0" />
                 <div>
-                  <span className="font-semibold block">Altri Partecipanti</span>
-                  <ul className="list-disc list-inside text-sm">
+                  <span className="font-semibold block text-neutral-800">Altri Partecipanti</span>
+                  <ul className="list-disc list-inside text-sm text-neutral-400">
                     {booking.participants.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
             </div>
           )}
         </div>
-        <p className="text-sm text-gray-500 mt-6">
-          Un riepilogo è stato inviato al tuo indirizzo email: <span className="font-semibold text-gray-600">{booking.email}</span>.
+        <p className="text-sm text-neutral-400 mt-6">
+          Un riepilogo è stato inviato al tuo indirizzo email: <span className="font-semibold text-neutral-800">{booking.email}</span>.
         </p>
-         <p className="mt-4 text-center text-xs font-bold uppercase text-secondary">
+         <p className="mt-4 text-center text-xs font-bold uppercase text-neutral-400">
             La prenotazione sarà confermata per messaggio previa verifica disponibilità campo
          </p>
       </div>
 
       <div className="mt-8 w-full max-w-md">
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">Aggiungi al tuo calendario</h3>
+        <h3 className="text-lg font-semibold text-neutral-800 mb-3">Aggiungi al tuo calendario</h3>
         <div className="flex flex-col sm:flex-row gap-4">
           <a
             href={googleCalendarUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 bg-neutral-50 border border-neutral-200 text-neutral-800 font-semibold py-2 px-4 rounded-md hover:bg-neutral-100 transition-colors"
           >
             <CalendarPlusIcon className="w-5 h-5"/>
             Google Calendar
@@ -141,7 +141,7 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
           <a
             href={icsFileHref()}
             download="lezione.ics"
-            className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 bg-neutral-50 border border-neutral-200 text-neutral-800 font-semibold py-2 px-4 rounded-md hover:bg-neutral-100 transition-colors"
           >
             <CalendarPlusIcon className="w-5 h-5"/>
             Altro Calendario (ICS)
@@ -152,7 +152,7 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
 
       <button
         onClick={onBookAnother}
-        className="mt-8 bg-primary text-white font-bold py-3 px-6 rounded-md hover:bg-primary-dark transition-colors duration-200"
+        className="mt-8 bg-primary text-white font-bold py-3 px-6 rounded-lg hover:bg-primary-dark transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
       >
         Prenota un'altra lezione
       </button>

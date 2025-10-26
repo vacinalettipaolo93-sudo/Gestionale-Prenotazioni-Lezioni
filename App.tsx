@@ -4,6 +4,7 @@ import BookingPage from './components/BookingPage';
 import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
+import BackgroundIcon from './components/BackgroundIcon';
 import { CogIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL } from './constants';
@@ -23,6 +24,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
   const [lessonSelection, setLessonSelection] = useState<LessonSelection | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [backgroundSport, setBackgroundSport] = useState<string | null>(null);
   
   // App data state - will be populated from Firestore
   const [sportsData, setSportsData] = useState<Sport[]>([]);
@@ -218,12 +220,14 @@ function App() {
   const handleBackFromBooking = () => {
     setCurrentPage('selection');
     setLessonSelection(null);
+    setBackgroundSport(null);
   }
 
   const handleBookAnother = () => {
     setCurrentPage('selection');
     setLessonSelection(null);
     setConfirmedBooking(null);
+    setBackgroundSport(null);
   };
   
   // --- ADMIN HANDLERS (NOW SAVE TO FIRESTORE) ---
@@ -332,7 +336,7 @@ function App() {
 
     switch (currentPage) {
       case 'selection':
-        return <EventTypeSelection sports={sportsData} onSelectionComplete={handleSelectionComplete} consultant={consultantInfo} />;
+        return <EventTypeSelection sports={sportsData} onSelectionComplete={handleSelectionComplete} consultant={consultantInfo} onSportChange={setBackgroundSport} />;
       case 'booking':
         if (!lessonSelection) {
             setCurrentPage('selection');
@@ -361,19 +365,20 @@ function App() {
   };
   
   return (
-    <div className="bg-gray-100 min-h-screen font-sans">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+    <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
+      {backgroundSport && <BackgroundIcon sport={backgroundSport} />}
+      <header className="bg-neutral-50 border-b border-neutral-200 relative z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <h1 className="text-2xl font-bold text-primary">Prenotazione Lezioni</h1>
             <div className="flex items-center gap-4">
-              <button onClick={() => setIsLoginModalOpen(true)} title="Admin Login" className="text-gray-500 hover:text-primary">
+              <button onClick={() => setIsLoginModalOpen(true)} title="Admin Login" className="text-neutral-400 hover:text-primary transition-colors duration-200">
                 <CogIcon className="w-6 h-6" />
               </button>
             </div>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto my-6 sm:my-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+      <main className="max-w-5xl mx-auto my-8 sm:my-10 relative z-10">
+        <div className="bg-neutral-50 rounded-2xl shadow-lg overflow-hidden border border-neutral-200">
           {renderContent()}
         </div>
       </main>

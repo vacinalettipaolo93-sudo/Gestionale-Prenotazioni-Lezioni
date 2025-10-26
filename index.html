@@ -4,19 +4,37 @@
     <meta charset="UTF-t" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestione Prenotazioni Lezioni</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
             colors: {
               primary: {
-                DEFAULT: '#0069ff',
-                light: '#e6f0ff',
-                dark: '#0052cc',
+                DEFAULT: '#0d9488', // Teal 600
+                light: '#14b8a6',  // Teal 500 (più luminoso per hover su scuro)
+                dark: '#0f766e',   // Teal 700
+                text: '#ccfbf1'    // Teal 100 per testo su sfondi primari
               },
-              secondary: '#4a5568',
-              lightgray: '#f7fafc',
+              accent: {
+                DEFAULT: '#f59e0b', // Amber 500
+                dark: '#d97706',   // Amber 600
+              },
+              neutral: {
+                // Dark mode palette
+                50: '#1e293b',   // Slate 800 (Card background)
+                100: '#0f172a',  // Slate 900 (Main background)
+                200: '#334155',  // Slate 700 (Borders, secondary elements)
+                400: '#94a3b8',  // Slate 400 (Secondary text)
+                600: '#e2e8f0',  // Slate 200 (Primary text)
+                800: '#f8fafc',  // Slate 50 (Headings, bright text)
+              }
             },
           },
         },
@@ -33,7 +51,7 @@
 }
 </script>
 </head>
-  <body class="bg-lightgray">
+  <body class="bg-neutral-100">
     <div id="root"></div>
     <!-- Firebase SDK is loaded via importmap -->
     <script type="module" src="/index.tsx"></script>

@@ -340,12 +340,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const renderProfileTab = () => (
         <div className="p-6 max-w-2xl mx-auto">
-            <h3 className="text-xl font-semibold mb-6">Personalizzazione Profilo & Home</h3>
-            <div className="space-y-6 bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-xl font-semibold mb-6 text-neutral-800">Personalizzazione Profilo & Home</h3>
+            <div className="space-y-6 bg-neutral-50 p-6 rounded-lg border border-neutral-200">
                 <div className="flex items-center gap-6">
-                    <img src={consultantInfo.avatarUrl} alt={consultantInfo.name} className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md" />
+                    <img src={consultantInfo.avatarUrl} alt={consultantInfo.name} className="w-24 h-24 rounded-full object-cover border-4 border-neutral-100 shadow-md" />
                     <div className="relative">
-                         <label htmlFor="avatar-upload" className="cursor-pointer bg-white text-primary font-semibold py-2 px-4 rounded-md border border-primary hover:bg-primary-light transition-colors flex items-center gap-2">
+                         <label htmlFor="avatar-upload" className="cursor-pointer bg-neutral-50 text-primary font-semibold py-2 px-4 rounded-md border border-primary hover:bg-primary hover:text-white transition-colors flex items-center gap-2">
                             <CameraIcon className="w-5 h-5" />
                             Cambia Foto
                         </label>
@@ -353,48 +353,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 </div>
                 <div>
-                    <label htmlFor="consultant-name" className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                    <label htmlFor="consultant-name" className="block text-sm font-medium text-neutral-400 mb-1">Nome</label>
                     <input 
                         id="consultant-name"
                         type="text" 
                         value={consultantInfo.name} 
                         onChange={(e) => handleInfoChange('name', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="w-full p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                     />
                 </div>
                  <div>
-                    <label htmlFor="consultant-title" className="block text-sm font-medium text-gray-700 mb-1">Titolo (sottotitolo)</label>
+                    <label htmlFor="consultant-title" className="block text-sm font-medium text-neutral-400 mb-1">Titolo (sottotitolo)</label>
                     <input 
                         id="consultant-title"
                         type="text" 
                         value={consultantInfo.title} 
                         onChange={(e) => handleInfoChange('title', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="w-full p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                     />
                 </div>
                 <div>
-                    <label htmlFor="consultant-email" className="block text-sm font-medium text-gray-700 mb-1">Email per le notifiche</label>
+                    <label htmlFor="consultant-email" className="block text-sm font-medium text-neutral-400 mb-1">Email per le notifiche</label>
                     <div className="relative">
-                        <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                         <input
                             id="consultant-email"
                             type="email"
                             placeholder="La tua email per ricevere gli inviti"
                             value={consultantInfo.email || ''}
                             onChange={(e) => handleInfoChange('email', e.target.value)}
-                            className="w-full pl-10 p-2 border border-gray-300 rounded-md"
+                            className="w-full pl-10 p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                         />
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Questa email sarà usata per inviarti una notifica di calendario per ogni nuova prenotazione.</p>
+                    <p className="text-xs text-neutral-400 mt-1">Questa email sarà usata per inviarti una notifica di calendario per ogni nuova prenotazione.</p>
                 </div>
                  <div>
-                    <label htmlFor="consultant-welcome" className="block text-sm font-medium text-gray-700 mb-1">Messaggio di Benvenuto</label>
+                    <label htmlFor="consultant-welcome" className="block text-sm font-medium text-neutral-400 mb-1">Messaggio di Benvenuto</label>
                     <textarea 
                         id="consultant-welcome"
                         rows={3}
                         value={consultantInfo.welcomeMessage} 
                         onChange={(e) => handleInfoChange('welcomeMessage', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="w-full p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                     />
                 </div>
             </div>
@@ -412,15 +412,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const renderHoursTab = () => (
         <div className="p-6">
             {/* Slot Interval */}
-            <div className="mb-8 pb-8 border-b">
-                 <h3 className="text-xl font-semibold mb-4">Impostazione Intervallo Slot Globale</h3>
-                 <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">
-                    <label htmlFor="slot-interval" className="font-medium text-gray-700">Intervallo prenotazione (minuti):</label>
+            <div className="mb-8 pb-8 border-b border-neutral-200">
+                 <h3 className="text-xl font-semibold mb-4 text-neutral-800">Impostazione Intervallo Slot Globale</h3>
+                 <div className="flex items-center gap-4 bg-neutral-50 p-4 rounded-lg border border-neutral-200">
+                    <label htmlFor="slot-interval" className="font-medium text-neutral-400">Intervallo prenotazione (minuti):</label>
                     <select
                         id="slot-interval"
                         value={slotInterval}
                         onChange={(e) => setSlotInterval(Number(e.target.value))}
-                        className="p-2 border rounded-md"
+                        className="p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                     >
                         <option value="15">15 minuti</option>
                         <option value="30">30 minuti</option>
@@ -438,19 +438,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
             
             {/* Location Specific Settings */}
-            <div className="mb-8 pb-8 border-b">
-                 <h3 className="text-xl font-semibold mb-4">Impostazioni Specifiche per Sede</h3>
-                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
+            <div className="mb-8 pb-8 border-b border-neutral-200">
+                 <h3 className="text-xl font-semibold mb-4 text-neutral-800">Impostazioni Specifiche per Sede</h3>
+                 <div className="space-y-4 bg-neutral-50 p-4 rounded-lg border border-neutral-200">
                     {uniqueLocations.map(loc => (
-                        <div key={loc.name} className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 border-t pt-4 first:border-t-0 first:pt-0">
-                             <label htmlFor={`slot-interval-${loc.id}`} className="font-medium text-gray-700">{loc.name}:</label>
+                        <div key={loc.name} className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 border-t border-neutral-200/50 pt-4 first:border-t-0 first:pt-0">
+                             <label htmlFor={`slot-interval-${loc.id}`} className="font-medium text-neutral-400">{loc.name}:</label>
                              <div className="flex items-center gap-2">
-                                <label htmlFor={`slot-interval-${loc.id}`} className="text-sm">Intervallo:</label>
+                                <label htmlFor={`slot-interval-${loc.id}`} className="text-sm text-neutral-400">Intervallo:</label>
                                 <select
                                     id={`slot-interval-${loc.id}`}
                                     value={loc.slotInterval || 0}
                                     onChange={(e) => handleLocationIntervalChangeByName(loc.name, e.target.value)}
-                                    className="p-2 border rounded-md w-full"
+                                    className="p-2 bg-neutral-100 border border-neutral-200 rounded-md w-full focus:ring-primary focus:border-primary text-neutral-800"
                                 >
                                     <option value="0">Default (Globale)</option>
                                     <option value="15">15 minuti</option>
@@ -459,13 +459,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </select>
                             </div>
                             <div className="flex items-center gap-2">
-                                <label htmlFor={`calendar-loc-${loc.id}`} className="text-sm">Calendario:</label>
+                                <label htmlFor={`calendar-loc-${loc.id}`} className="text-sm text-neutral-400">Calendario:</label>
                                 <select
                                     id={`calendar-loc-${loc.id}`}
                                     value={loc.googleCalendarId || ''}
                                     onChange={(e) => handleLocationCalendarChangeByName(loc.name, e.target.value)}
                                     disabled={!isGoogleSignedIn}
-                                    className="p-2 border rounded-md w-full disabled:bg-gray-200"
+                                    className="p-2 bg-neutral-100 border border-neutral-200 rounded-md w-full disabled:bg-neutral-200/50 focus:ring-primary focus:border-primary text-neutral-800 disabled:text-neutral-400"
                                 >
                                     <option value="">Default (Primario)</option>
                                     {writableCalendars.map(cal => (
@@ -475,7 +475,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                         </div>
                     ))}
-                    {!isGoogleSignedIn && <p className="text-sm text-gray-500 mt-2">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici alle sedi.</p>}
+                    {!isGoogleSignedIn && <p className="text-sm text-neutral-400 mt-2">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici alle sedi.</p>}
                  </div>
                  <div className="mt-4 text-right">
                     <button 
@@ -489,20 +489,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* Working Hours */}
             <div className="mb-8">
-                <h3 className="text-xl font-semibold mb-4">Orari di Lavoro Settimanali</h3>
+                <h3 className="text-xl font-semibold mb-4 text-neutral-800">Orari di Lavoro Settimanali</h3>
                 <div className="space-y-4">
                     {weekDays.map((dayName, index) => {
                         const dayHours = workingHours[index];
                         return (
-                            <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-md">
+                            <div key={index} className="flex items-center gap-4 p-3 bg-neutral-50 rounded-md border border-neutral-200">
                                 <label className="flex items-center w-32">
                                     <input
                                         type="checkbox"
                                         checked={!!dayHours}
                                         onChange={() => toggleDayAvailability(index)}
-                                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                                        className="h-4 w-4 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
                                     />
-                                    <span className="ml-3 font-medium text-gray-700">{dayName}</span>
+                                    <span className="ml-3 font-medium text-neutral-600">{dayName}</span>
                                 </label>
                                 {/* FIX: Replaced the conditional rendering logic with a more explicit check to ensure TypeScript correctly narrows the type and allows access to `start` and `end` properties. */}
                                 {dayHours ? (
@@ -511,18 +511,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             type="time"
                                             value={`${String(Math.floor(dayHours.start / 60)).padStart(2, '0')}:${String(dayHours.start % 60).padStart(2, '0')}`}
                                             onChange={(e) => handleWorkingHoursChange(index, 'start', e.target.value)}
-                                            className="p-1 border rounded-md"
+                                            className="p-1 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                                         />
-                                        <span>-</span>
+                                        <span className='text-neutral-400'>-</span>
                                         <input
                                             type="time"
                                             value={`${String(Math.floor(dayHours.end / 60)).padStart(2, '0')}:${String(dayHours.end % 60).padStart(2, '0')}`}
                                             onChange={(e) => handleWorkingHoursChange(index, 'end', e.target.value)}
-                                            className="p-1 border rounded-md"
+                                            className="p-1 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                                         />
                                     </div>
                                 ) : (
-                                    <span className="text-gray-500">Non disponibile</span>
+                                    <span className="text-neutral-400">Non disponibile</span>
                                 )}
                             </div>
                         );
@@ -540,17 +540,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* Date Overrides */}
             <div>
-                <h3 className="text-xl font-semibold mb-4">Eccezioni Calendario</h3>
-                <form onSubmit={handleAddOverride} className="bg-gray-50 p-4 rounded-lg mb-6 flex flex-wrap items-end gap-4">
+                <h3 className="text-xl font-semibold mb-4 text-neutral-800">Eccezioni Calendario</h3>
+                <form onSubmit={handleAddOverride} className="bg-neutral-50 p-4 rounded-lg mb-6 flex flex-wrap items-end gap-4 border border-neutral-200">
                     <div>
-                        <label htmlFor="override-date" className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                        <label htmlFor="override-date" className="block text-sm font-medium text-neutral-400 mb-1">Data</label>
                         <input
                             id="override-date"
                             type="date"
                             value={newOverrideDate}
                             onChange={(e) => setNewOverrideDate(e.target.value)}
                             required
-                            className="p-2 border rounded-md"
+                            className="p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
                         />
                     </div>
                     <div>
@@ -559,20 +559,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 type="checkbox"
                                 checked={isNewOverrideAvailable}
                                 onChange={(e) => setIsNewOverrideAvailable(e.target.checked)}
-                                className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                                className="h-4 w-4 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
                             />
-                            <span className="ml-2 text-sm font-medium text-gray-700">Disponibile</span>
+                            <span className="ml-2 text-sm font-medium text-neutral-400">Disponibile</span>
                         </label>
                     </div>
                     {isNewOverrideAvailable && (
                         <div className="flex items-end gap-2">
                             <div>
-                                <label htmlFor="override-start" className="block text-sm font-medium text-gray-700 mb-1">Inizio</label>
-                                <input id="override-start" type="time" value={newOverrideStart} onChange={(e) => setNewOverrideStart(e.target.value)} className="p-2 border rounded-md" />
+                                <label htmlFor="override-start" className="block text-sm font-medium text-neutral-400 mb-1">Inizio</label>
+                                <input id="override-start" type="time" value={newOverrideStart} onChange={(e) => setNewOverrideStart(e.target.value)} className="p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
                             </div>
                             <div>
-                                <label htmlFor="override-end" className="block text-sm font-medium text-gray-700 mb-1">Fine</label>
-                                <input id="override-end" type="time" value={newOverrideEnd} onChange={(e) => setNewOverrideEnd(e.target.value)} className="p-2 border rounded-md" />
+                                <label htmlFor="override-end" className="block text-sm font-medium text-neutral-400 mb-1">Fine</label>
+                                <input id="override-end" type="time" value={newOverrideEnd} onChange={(e) => setNewOverrideEnd(e.target.value)} className="p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
                             </div>
                         </div>
                     )}
@@ -582,14 +582,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </form>
                 <div className="space-y-2">
                     {Object.entries(dateOverrides).sort().map(([date, hours]) => (
-                        <div key={date} className="flex items-center justify-between p-3 bg-white border rounded-md">
-                            <span className="font-semibold">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        <div key={date} className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-md">
+                            <span className="font-semibold text-neutral-800">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                             {hours ? (
-                                <span className="text-green-600">{`${String(Math.floor(hours.start / 60)).padStart(2, '0')}:${String(hours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(hours.end / 60)).padStart(2, '0')}:${String(hours.end % 60).padStart(2, '0')}`}</span>
+                                <span className="text-green-400">{`${String(Math.floor(hours.start / 60)).padStart(2, '0')}:${String(hours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(hours.end / 60)).padStart(2, '0')}:${String(hours.end % 60).padStart(2, '0')}`}</span>
                             ) : (
-                                <span className="text-red-600">Non disponibile</span>
+                                <span className="text-red-400">Non disponibile</span>
                             )}
-                            <button onClick={() => handleRemoveOverride(date)} className="text-gray-400 hover:text-red-500"><XIcon className="w-5 h-5"/></button>
+                            <button onClick={() => handleRemoveOverride(date)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-5 h-5"/></button>
                         </div>
                     ))}
                 </div>
@@ -607,25 +607,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const renderServicesTab = () => (
         <div className="p-6">
-            <h3 className="text-xl font-semibold mb-4">Gestione Sport, Lezioni e Sedi</h3>
+            <h3 className="text-xl font-semibold mb-4 text-neutral-800">Gestione Sport, Lezioni e Sedi</h3>
             <div className="space-y-6">
                 {sportsData.map((sport, sportIndex) => (
-                    <div key={sport.id} className="p-4 bg-white rounded-lg shadow">
-                        <div className="flex items-start justify-between border-b pb-3 mb-3 gap-4">
+                    <div key={sport.id} className="p-4 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
+                        <div className="flex items-start justify-between border-b border-neutral-200 pb-3 mb-3 gap-4">
                              <div className="flex items-center gap-4 flex-grow">
-                                <input type="color" value={sport.color} onChange={e => handleUpdateSport(sportIndex, 'color', e.target.value)} className="w-10 h-10" />
-                                <input type="text" value={sport.name} onChange={e => handleUpdateSport(sportIndex, 'name', e.target.value)} className="text-lg font-bold p-1 border-b-2 flex-grow" />
+                                <input type="color" value={sport.color} onChange={e => handleUpdateSport(sportIndex, 'color', e.target.value)} className="w-10 h-10 rounded-md overflow-hidden bg-transparent border-none cursor-pointer" />
+                                <input type="text" value={sport.name} onChange={e => handleUpdateSport(sportIndex, 'name', e.target.value)} className="text-lg font-bold p-1 bg-transparent border-b-2 border-transparent focus:border-primary outline-none flex-grow text-neutral-800" />
                             </div>
                             <div className="flex flex-col items-end gap-2">
-                                <button onClick={() => handleDeleteSport(sportIndex)} className="text-gray-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
+                                <button onClick={() => handleDeleteSport(sportIndex)} className="text-neutral-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
                                 {isGoogleSignedIn && (
                                     <div className="w-64">
-                                        <label htmlFor={`calendar-sport-${sport.id}`} className="block text-xs font-medium text-gray-600 mb-1">Calendario Google per nuovi eventi</label>
+                                        <label htmlFor={`calendar-sport-${sport.id}`} className="block text-xs font-medium text-neutral-400 mb-1">Calendario Google per nuovi eventi</label>
                                         <select
                                             id={`calendar-sport-${sport.id}`}
                                             value={sport.googleCalendarId || ''}
                                             onChange={e => handleUpdateSport(sportIndex, 'googleCalendarId', e.target.value)}
-                                            className="p-1 border rounded-md w-full text-sm"
+                                            className="p-1 bg-neutral-100 border border-neutral-200 rounded-md w-full text-sm focus:ring-primary focus:border-primary text-neutral-800"
                                         >
                                             <option value="">Default (Primario)</option>
                                             {writableCalendars.map(cal => (
@@ -640,23 +640,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         {/* Lesson Types */}
                         <div className="space-y-4 pl-4">
                             {sport.lessonTypes.map((lt, ltIndex) => (
-                                <div key={lt.id} className="p-3 bg-gray-50 rounded-md">
+                                <div key={lt.id} className="p-3 bg-neutral-100 rounded-md border border-neutral-200">
                                     <div className="flex justify-between items-start">
                                         <div className="flex-1">
-                                            <input type="text" value={lt.name} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'name', e.target.value)} className="font-semibold p-1 w-full" />
-                                            <textarea value={lt.description} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'description', e.target.value)} className="text-sm text-gray-600 p-1 w-full mt-1 border rounded-md" placeholder="Descrizione..."/>
+                                            <input type="text" value={lt.name} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'name', e.target.value)} className="font-semibold p-1 w-full bg-transparent border-transparent focus:border-primary outline-none border-b-2 text-neutral-800" />
+                                            <textarea value={lt.description} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'description', e.target.value)} className="text-sm text-neutral-600 p-1 w-full mt-1 bg-neutral-50 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary" placeholder="Descrizione..."/>
                                         </div>
-                                        <button onClick={() => handleDeleteLessonType(sportIndex, ltIndex)} className="ml-2 text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
+                                        <button onClick={() => handleDeleteLessonType(sportIndex, ltIndex)} className="ml-2 text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
                                     </div>
                                     
                                     {/* Options */}
                                     <div className="mt-2 pl-4">
-                                        <h4 className="text-sm font-medium text-gray-700">Opzioni Durata</h4>
+                                        <h4 className="text-sm font-medium text-neutral-400">Opzioni Durata</h4>
                                         {lt.options.map((opt, optIndex) => (
                                             <div key={opt.id} className="flex items-center gap-2 mt-1">
-                                                <input type="number" step="15" value={opt.duration} onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} className="w-20 p-1 border rounded-md" />
-                                                <span>minuti</span>
-                                                <button onClick={() => handleDeleteOption(sportIndex, ltIndex, optIndex)} className="text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
+                                                <input type="number" step="15" value={opt.duration} onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} className="w-20 p-1 bg-neutral-50 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
+                                                <span className="text-neutral-600">minuti</span>
+                                                <button onClick={() => handleDeleteOption(sportIndex, ltIndex, optIndex)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
                                             </div>
                                         ))}
                                         <button onClick={() => handleAddOption(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi opzione</button>
@@ -664,14 +664,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     
                                     {/* Locations */}
                                     <div className="mt-2 pl-4">
-                                        <h4 className="text-sm font-medium text-gray-700">Sedi</h4>
+                                        <h4 className="text-sm font-medium text-neutral-400">Sedi</h4>
                                         {lt.locations.map((loc, locIndex) => (
                                             <div key={loc.id} className="mt-1 space-y-1">
                                                 <div className="flex items-center gap-2">
-                                                    <input type="text" value={loc.name} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} className="p-1 border rounded-md flex-1" placeholder="Nome Sede"/>
-                                                    <button onClick={() => handleDeleteLocation(sportIndex, ltIndex, locIndex)} className="text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
+                                                    <input type="text" value={loc.name} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} className="p-1 bg-neutral-50 border border-neutral-200 rounded-md flex-1 focus:ring-primary focus:border-primary text-neutral-800" placeholder="Nome Sede"/>
+                                                    <button onClick={() => handleDeleteLocation(sportIndex, ltIndex, locIndex)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
                                                 </div>
-                                                <input type="text" value={loc.address} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'address', e.target.value)} className="p-1 border rounded-md w-full" placeholder="Indirizzo"/>
+                                                <input type="text" value={loc.address} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'address', e.target.value)} className="p-1 bg-neutral-50 border border-neutral-200 rounded-md w-full focus:ring-primary focus:border-primary text-neutral-800" placeholder="Indirizzo"/>
                                             </div>
                                         ))}
                                         <button onClick={() => handleAddLocation(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi sede</button>
@@ -683,8 +683,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 ))}
             </div>
-            {!isGoogleSignedIn && <p className="text-sm text-gray-500 mt-4">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
-            <button onClick={handleAddSport} className="mt-6 w-full text-center bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
+            {!isGoogleSignedIn && <p className="text-sm text-neutral-400 mt-4">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
+            <button onClick={handleAddSport} className="mt-6 w-full text-center bg-neutral-200/50 hover:bg-neutral-200 text-neutral-800 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
             <div className="mt-8 text-right">
                 <button 
                     onClick={() => onSaveSportsData(sportsData)} 
@@ -697,13 +697,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     
     const renderIntegrationsTab = () => (
-        <div className="p-6 bg-white rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4">Integrazione Google Calendar</h3>
+        <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
+            <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
             {!isGapiLoaded || !isGisLoaded ? (
                 <p>Caricamento dei servizi Google in corso...</p>
             ) : !isGoogleSignedIn ? (
-                <div className="text-center p-8 border-2 border-dashed rounded-lg">
-                    <p className="mb-4 text-gray-600">Connetti il tuo account Google per sincronizzare automaticamente la tua disponibilità e creare eventi per le nuove prenotazioni.</p>
+                <div className="text-center p-8 border-2 border-dashed border-neutral-200 rounded-lg">
+                    <p className="mb-4 text-neutral-400">Connetti il tuo account Google per sincronizzare automaticamente la tua disponibilità e creare eventi per le nuove prenotazioni.</p>
                     <button onClick={onGoogleSignIn} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
                         Accedi con Google
                     </button>
@@ -711,48 +711,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             ) : (
                 <div>
                     <div className="flex justify-between items-center mb-6">
-                        <p className="text-green-600 font-semibold">Connesso a Google Calendar.</p>
+                        <p className="text-green-400 font-semibold">Connesso a Google Calendar.</p>
                         <button onClick={onGoogleSignOut} className="text-sm text-red-500 hover:underline">Disconnetti</button>
                     </div>
                     
-                    <h4 className="font-semibold text-gray-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
-                    <p className="text-sm text-gray-500 mb-4">
+                    <h4 className="font-semibold text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
+                    <p className="text-sm text-neutral-400 mb-4">
                         Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
                     </p>
 
                     {isLoadingCalendars ? (
                         <div className="flex items-center justify-center p-4">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                            <span className="ml-3 text-gray-600">Caricamento calendari...</span>
+                            <span className="ml-3 text-neutral-400">Caricamento calendari...</span>
                         </div>
                     ) : calendarError ? (
-                        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-md">
+                        <div className="p-4 bg-red-900/50 border border-red-400 text-red-300 rounded-md">
                             <p className="font-bold">Errore</p>
                             <p>{calendarError}</p>
                         </div>
                     ) : allGoogleCalendars.length > 0 ? (
-                        <div className="space-y-3 p-4 bg-gray-50 border rounded-md max-h-96 overflow-y-auto">
+                        <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
                             {allGoogleCalendars.map(cal => (
-                                <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+                                <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={selectedCalendarIds.includes(cal.id)}
                                     onChange={() => handleCalendarSelectionChange(cal.id)}
-                                    className="h-5 w-5 text-primary focus:ring-primary border-gray-300 rounded"
+                                    className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
                                 />
-                                <span className="ml-3 text-gray-800">{cal.summary}</span>
+                                <span className="ml-3 text-neutral-600">{cal.summary}</span>
                                 </label>
                             ))}
                         </div>
                     ) : (
-                        <p className="text-gray-500 p-4 bg-gray-50 border rounded-md">Nessun calendario trovato.</p>
+                        <p className="text-neutral-400 p-4 bg-neutral-100 border border-neutral-200 rounded-md">Nessun calendario trovato.</p>
                     )}
                     
                     <div className="mt-6 text-right">
                         <button 
                             onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
                             disabled={isLoadingCalendars}
-                            className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-gray-400"
+                            className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-neutral-400"
                         >
                             Salva Calendari Selezionati
                         </button>
@@ -771,16 +771,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     ];
 
     return (
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen bg-neutral-100 text-neutral-600">
             {/* Sidebar */}
-            <nav className="w-64 bg-white shadow-md p-4 flex flex-col">
+            <nav className="w-64 bg-neutral-50 shadow-md p-4 flex flex-col border-r border-neutral-200">
                 <div className="space-y-2 flex-grow">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`w-full text-left font-semibold p-3 rounded-md transition-colors ${
-                                activeTab === tab.id ? 'bg-primary-light text-primary' : 'text-gray-600 hover:bg-gray-100'
+                                activeTab === tab.id ? 'bg-primary text-primary-text' : 'text-neutral-600 hover:bg-neutral-100'
                             }`}
                         >
                             {tab.label}
@@ -789,14 +789,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                  <button 
                     onClick={onLogout} 
-                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-600 hover:bg-red-50"
+                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-400 hover:bg-red-500/10"
                 >
                     Logout
                 </button>
             </nav>
 
             {/* Content */}
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-gray-100 overflow-y-auto">
+            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                 {activeTab === 'profile' && renderProfileTab()}
                 {activeTab === 'hours' && renderHoursTab()}
                 {activeTab === 'services' && renderServicesTab()}
