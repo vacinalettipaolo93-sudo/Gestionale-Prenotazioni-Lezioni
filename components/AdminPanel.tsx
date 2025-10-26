@@ -12,6 +12,11 @@ interface AdminPanelProps {
     onSaveSportsData: (newSports: Sport[]) => void;
     onSaveConsultantInfo: (newInfo: ConsultantInfo) => void;
     onLogout: () => void;
+    isGoogleSignedIn: boolean;
+    onGoogleSignIn: () => void;
+    onGoogleSignOut: () => void;
+    isGapiLoaded: boolean;
+    isGisLoaded: boolean;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -23,7 +28,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onSaveDateOverrides,
     onSaveSportsData,
     onSaveConsultantInfo,
-    onLogout 
+    onLogout,
+    isGoogleSignedIn,
+    onGoogleSignIn,
+    onGoogleSignOut,
+    isGapiLoaded,
+    isGisLoaded
 }) => {
     const [workingHours, setWorkingHours] = useState<WorkingHours>(initialWorkingHours);
     const [dateOverrides, setDateOverrides] = useState<DateOverrides>(initialDateOverrides);
@@ -524,9 +534,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div>
             <header className="p-6 bg-gray-50 border-b flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-800">Pannello Amministratore</h2>
-                <button onClick={onLogout} className="text-sm font-medium text-gray-600 hover:text-primary">
-                    Logout
-                </button>
+                <div className="flex items-center gap-4">
+                  {isGoogleSignedIn ? (
+                      <button onClick={onGoogleSignOut} className="text-sm font-medium text-gray-600 hover:text-gray-900">
+                          Logout Google Calendar
+                      </button>
+                  ) : (
+                      <button onClick={onGoogleSignIn} disabled={!isGapiLoaded || !isGisLoaded} className="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50">
+                          Login Google Calendar
+                      </button>
+                  )}
+                  <button onClick={onLogout} className="text-sm font-medium text-gray-600 hover:text-primary">
+                      Logout
+                  </button>
+                </div>
             </header>
 
             <div className="border-b border-gray-200">

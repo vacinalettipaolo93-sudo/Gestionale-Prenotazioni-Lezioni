@@ -272,6 +272,11 @@ function App() {
         onSaveDateOverrides={handleSaveDateOverrides}
         onSaveConsultantInfo={handleSaveConsultantInfo}
         onLogout={handleAdminLogout}
+        isGoogleSignedIn={isGoogleSignedIn}
+        onGoogleSignIn={handleGoogleSignIn}
+        onGoogleSignOut={handleGoogleSignOut}
+        isGapiLoaded={gapiLoaded}
+        isGisLoaded={gisLoaded}
       />;
     }
 
@@ -310,17 +315,6 @@ function App() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
             <h1 className="text-2xl font-bold text-primary">Prenotazione Lezioni</h1>
             <div className="flex items-center gap-4">
-              {!isAdminLoggedIn && (
-                isGoogleSignedIn ? (
-                  <button onClick={handleGoogleSignOut} className="text-sm font-medium text-gray-600 hover:text-gray-900">
-                    Logout Google Calendar
-                  </button>
-                ) : (
-                  <button onClick={handleGoogleSignIn} disabled={!gapiLoaded || !gisLoaded} className="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50">
-                    Login Google Calendar
-                  </button>
-                )
-              )}
               <button onClick={() => setIsLoginModalOpen(true)} title="Admin Login" className="text-gray-500 hover:text-primary">
                 <CogIcon className="w-6 h-6" />
               </button>
