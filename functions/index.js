@@ -1,8 +1,10 @@
+
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { google } = require("googleapis");
 const path = require("path");
 const fs = require("fs");
+const util = require("util"); // For better object logging
 
 admin.initializeApp();
 
@@ -40,16 +42,40 @@ const getAuthenticatedClient = async () => {
 };
 
 const handleApiError = (error, functionName) => {
-    console.error(`Errore in ${functionName}:`, error.message);
-    // If it's already an HttpsError (thrown by a dependency or us), rethrow it
+    // Log the full error for better debugging in Firebase logs using util.inspect.
+    console.error(`Errore in ${functionName}:`, util.inspect(error, {depth: null}));
+
+    // If it's already an HttpsError (thrown by a dependency or us), rethrow it.
     if (error.code && error.httpErrorCode) {
         throw error;
     }
-    // Otherwise, wrap it in a new HttpsError
-    const serverMessage = error.message || `Errore sconosciuto in ${functionName}.`;
+
+    // Create a detailed message from various possible error structures.
+    // Prioritize more specific Google API error formats.
+    let serverMessage = `Si è verificato un errore sconosciuto in ${functionName}.`;
+    
+    if (error.response?.data?.error?.message) {
+        // Gaxios error structure (most common for Google APIs)
+        serverMessage = error.response.data.error.message;
+    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+        // Alternative Google API error structure: { errors: [ { message: '...' } ] }
+        serverMessage = error.errors.map((e) => e.message).join("; ");
+    } else if (error instanceof Error) {
+        serverMessage = error.message;
+    } else if (typeof error === 'string') {
+        serverMessage = error;
+    } else {
+        try {
+            serverMessage = JSON.stringify(error);
+        } catch (e) {
+            // The initial value of serverMessage will be used as a fallback.
+        }
+    }
+    
     // The client SDK sometimes replaces the 'message' for 'internal' errors.
     // The 'details' object is the reliable way to pass custom error data.
-    throw new functions.https.HttpsError('internal', `An internal error occurred in ${functionName}.`, { serverMessage });
+    // We also pass the message directly in case the client misses the details.
+    throw new functions.https.HttpsError('internal', serverMessage, { serverMessage });
 };
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
@@ -67,18 +93,13 @@ exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => 
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
         // This call will fail if the API is not enabled or auth is fundamentally broken.
-        // It doesn't matter if it returns calendars or not; we just need it to not throw an error.
         await calendar.calendarList.list({ maxResults: 1 });
         
         // If the call succeeds, the backend is configured correctly.
         return { isConfigured: true };
     } catch (error) {
-        const errorMessage = error.message || 'An unknown authentication error occurred.';
-        console.error("checkGoogleAuthStatus failed during API verification:", errorMessage);
-        
-        // The file exists but the API call failed. This is an error state.
-        // Propagate the detailed error message for the frontend to display.
-        throw new functions.https.HttpsError('internal', 'Backend configuration check failed.', { serverMessage: errorMessage });
+        // Use the centralized error handler for consistent error propagation.
+        handleApiError(error, 'checkGoogleAuthStatus');
     }
 });
 
