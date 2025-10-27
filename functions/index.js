@@ -13,7 +13,6 @@ admin.initializeApp();
 const getAuthenticatedClient = async () => {
   const credentialsPath = path.resolve(__dirname, "./credentials.json");
   if (!fs.existsSync(credentialsPath)) {
-    // This error will be handled by the caller, which knows if it's a missing config or an error.
     throw new Error("File credentials.json non trovato nella cartella /functions.");
   }
 
@@ -34,30 +33,33 @@ const getAuthenticatedClient = async () => {
     } else {
         detailedMessage += " Assicurati che il file 'credentials.json' sia valido e non corrotto.";
     }
-    // Create a new error with a more descriptive message to be thrown.
     const augmentedError = new Error(detailedMessage);
-    augmentedError.stack = error.stack; // Preserve the original stack for debugging
+    augmentedError.stack = error.stack;
     throw augmentedError;
   }
 };
 
 const handleApiError = (error, functionName) => {
-    // Log the full error for better debugging in Firebase logs using util.inspect.
-    console.error(`Errore in ${functionName}:`, util.inspect(error, {depth: null}));
+    console.error(`Errore dettagliato in ${functionName}:`, util.inspect(error, {depth: 5}));
 
-    // If it's already an HttpsError (thrown by a dependency or us), rethrow it.
     if (error.code && error.httpErrorCode) {
         throw error;
     }
 
-    // Create a detailed message from various possible error structures.
-    // Prioritize more specific Google API error formats.
-    let serverMessage = `Si è verificato un errore sconosciuto in ${functionName}.`;
-    
+    let serverMessage = `Si è verificato un errore in ${functionName}.`;
+    let statusCode = '';
+
+    if (error.code) {
+        statusCode = `(Codice: ${error.code}) `;
+    } else if (error.response?.status) {
+        statusCode = `(Status: ${error.response.status}) `;
+    }
+
+    // Attempt to extract the most specific message from Google API error formats
     if (error.response?.data?.error?.message) {
-        // Gaxios error structure (most common for Google APIs)
+        // Gaxios error structure (most common)
         serverMessage = error.response.data.error.message;
-    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0 && error.errors[0].message) {
         // Alternative Google API error structure: { errors: [ { message: '...' } ] }
         serverMessage = error.errors.map((e) => e.message).join("; ");
     } else if (error instanceof Error) {
@@ -68,14 +70,12 @@ const handleApiError = (error, functionName) => {
         try {
             serverMessage = JSON.stringify(error);
         } catch (e) {
-            // The initial value of serverMessage will be used as a fallback.
+            // Fallback is already set
         }
     }
     
-    // The client SDK sometimes replaces the 'message' for 'internal' errors.
-    // The 'details' object is the reliable way to pass custom error data.
-    // We also pass the message directly in case the client misses the details.
-    throw new functions.https.HttpsError('internal', serverMessage, { serverMessage });
+    const finalMessage = `${statusCode}${serverMessage}`;
+    throw new functions.https.HttpsError('internal', finalMessage, { serverMessage: finalMessage });
 };
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
@@ -83,22 +83,17 @@ const handleApiError = (error, functionName) => {
 exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => {
     const credentialsPath = path.resolve(__dirname, "./credentials.json");
     if (!fs.existsSync(credentialsPath)) {
-        // If the file does not exist, it's a "not configured" state.
         return { isConfigured: false };
     }
     
     try {
-        // A more robust check: attempt a real, lightweight API call.
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
-        // This call will fail if the API is not enabled or auth is fundamentally broken.
         await calendar.calendarList.list({ maxResults: 1 });
         
-        // If the call succeeds, the backend is configured correctly.
         return { isConfigured: true };
     } catch (error) {
-        // Use the centralized error handler for consistent error propagation.
         handleApiError(error, 'checkGoogleAuthStatus');
     }
 });
@@ -171,7 +166,6 @@ exports.createGoogleCalendarEvent = functions.https.onCall(async (data, context)
             eventUrl: createdEvent.data.htmlLink,
         };
     } catch (error) {
-        // Now we propagate the error because the frontend depends on the result.
         handleApiError(error, 'createGoogleCalendarEvent');
     }
 });
