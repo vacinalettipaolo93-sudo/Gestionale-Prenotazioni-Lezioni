@@ -1,6 +1,7 @@
 // Import the functions you need from the SDKs you need
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
+import 'firebase/compat/functions';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -14,10 +15,27 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase.
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 
 // Get and export the Firestore instance and the firestore namespace
 const db = firebase.firestore();
 const firestore = firebase.firestore;
+const functions = firebase.app().functions('us-central1');
 
-export { db, firestore };
+// Funzioni callable
+const checkGoogleAuthStatus = functions.httpsCallable('checkGoogleAuthStatus');
+const getGoogleCalendarList = functions.httpsCallable('getGoogleCalendarList');
+const getGoogleCalendarAvailability = functions.httpsCallable('getGoogleCalendarAvailability');
+const createGoogleCalendarEvent = functions.httpsCallable('createGoogleCalendarEvent');
+
+
+export { 
+    db, 
+    firestore, 
+    checkGoogleAuthStatus, 
+    getGoogleCalendarList,
+    getGoogleCalendarAvailability,
+    createGoogleCalendarEvent,
+};

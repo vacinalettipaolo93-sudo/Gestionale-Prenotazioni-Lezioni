@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon } from './icons';
-
-declare const gapi: any;
+import { getGoogleCalendarList } from '../firebaseConfig';
 
 interface GoogleCalendar {
     id: string;
@@ -26,11 +25,10 @@ interface AdminPanelProps {
     onSaveMinimumNoticeHours: (newNotice: number) => void;
     onSaveSelectedCalendars: (calendarIds: string[]) => void;
     onLogout: () => void;
-    isGoogleSignedIn: boolean;
-    onGoogleSignIn: () => void;
-    onGoogleSignOut: () => void;
-    isGapiLoaded: boolean;
-    isGisLoaded: boolean;
+    isBackendConfigured: boolean;
+    onRefreshAuthStatus: () => void;
+    isCheckingAuth: boolean;
+    authError?: string | null;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -49,11 +47,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onSaveMinimumNoticeHours,
     onSaveSelectedCalendars,
     onLogout,
-    isGoogleSignedIn,
-    onGoogleSignIn,
-    onGoogleSignOut,
-    isGapiLoaded,
-    isGisLoaded
+    isBackendConfigured,
+    onRefreshAuthStatus,
+    isCheckingAuth,
+    authError
 }) => {
     const [workingHours, setWorkingHours] = useState<WorkingHours>(initialWorkingHours);
     const [dateOverrides, setDateOverrides] = useState<DateOverrides>(initialDateOverrides);
@@ -90,34 +87,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
-    // Fetch Google Calendars when user is signed in
+    // Fetch Google Calendars when backend is configured
     useEffect(() => {
-        if (isGoogleSignedIn && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours')) {
-            if (allGoogleCalendars.length > 0) return; // Fetch only once
-            
-            setIsLoadingCalendars(true);
-            setCalendarError(null);
-            gapi.client.calendar.calendarList.list()
-                .then((response: any) => {
-                    if(response.result.items){
-                        setAllGoogleCalendars(response.result.items.map((cal: any) => ({ 
-                            id: cal.id, 
-                            summary: cal.summary,
-                            accessRole: cal.accessRole
-                        })));
-                    } else {
-                        setAllGoogleCalendars([]);
-                    }
-                })
-                .catch((error: any) => {
-                    console.error("Error fetching calendar list:", error);
-                    setCalendarError("Impossibile caricare l'elenco dei calendari. Prova a disconnetterti e a riconnetterti a Google per aggiornare le autorizzazioni.");
-                })
-                .finally(() => {
+        const fetchCalendars = async () => {
+             if (isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours')) {
+                if (allGoogleCalendars.length > 0) return; // Fetch only once
+                
+                setIsLoadingCalendars(true);
+                setCalendarError(null);
+                try {
+                    const result = await getGoogleCalendarList();
+                    const data = result.data as { calendars: GoogleCalendar[] };
+                    setAllGoogleCalendars(data.calendars || []);
+                } catch (error: any) {
+                     console.error("Error fetching calendar list:", error);
+                    setCalendarError(error.message || "Impossibile caricare l'elenco dei calendari. Controlla la configurazione e la condivisione del calendario.");
+                } finally {
                     setIsLoadingCalendars(false);
-                });
-        }
-    }, [isGoogleSignedIn, activeTab, allGoogleCalendars]);
+                }
+            }
+        };
+
+        fetchCalendars();
+    }, [isBackendConfigured, activeTab, allGoogleCalendars]);
 
 
     // --- State Update Handlers ---
@@ -278,7 +270,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const handleLocationIntervalChangeByName = (locationName: string, value: string) => {
         const newInterval = parseInt(value, 10);
-        // FIX: Explicitly type `draft` as `Sport[]` to resolve a TypeScript inference issue.
         updateState(setSportsData, (draft: Sport[]) => {
             draft.forEach(sport => {
                 sport.lessonTypes.forEach(lt => {
@@ -297,7 +288,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     };
 
     const handleLocationCalendarChangeByName = (locationName: string, calendarId: string) => {
-        // FIX: Explicitly type `draft` as `Sport[]` to resolve a TypeScript inference issue.
         updateState(setSportsData, (draft: Sport[]) => {
             draft.forEach(sport => {
                 sport.lessonTypes.forEach(lt => {
@@ -503,7 +493,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     id={`calendar-loc-${loc.id}`}
                                     value={loc.googleCalendarId || ''}
                                     onChange={(e) => handleLocationCalendarChangeByName(loc.name, e.target.value)}
-                                    disabled={!isGoogleSignedIn}
+                                    disabled={!isBackendConfigured}
                                     className="p-2 bg-neutral-100 border border-neutral-200 rounded-md w-full disabled:bg-neutral-200/50 focus:ring-primary focus:border-primary text-neutral-800 disabled:text-neutral-400"
                                 >
                                     <option value="">Default (Primario)</option>
@@ -514,7 +504,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                         </div>
                     ))}
-                    {!isGoogleSignedIn && <p className="text-sm text-neutral-400 mt-2">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici alle sedi.</p>}
+                    {!isBackendConfigured && <p className="text-sm text-neutral-400 mt-2">Completa la configurazione nella scheda "Integrazioni" per assegnare calendari specifici alle sedi.</p>}
                  </div>
                  <div className="mt-4 text-right">
                     <button 
@@ -543,7 +533,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     />
                                     <span className="ml-3 font-medium text-neutral-600">{dayName}</span>
                                 </label>
-                                {/* FIX: Replaced the conditional rendering logic with a more explicit check to ensure TypeScript correctly narrows the type and allows access to `start` and `end` properties. */}
                                 {dayHours ? (
                                     <div className="flex items-center gap-2">
                                         <input
@@ -621,7 +610,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </form>
                 <div className="space-y-2">
                     {Object.entries(dateOverrides).sort().map(([date, hours]) => {
-                        // FIX: Explicitly cast `hours` to its correct type to resolve a TypeScript inference issue with `Object.entries`.
                         const typedHours = hours as { start: number; end: number } | null;
                         return (
                             <div key={date} className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-md">
@@ -661,7 +649,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                             <div className="flex flex-col items-end gap-2">
                                 <button onClick={() => handleDeleteSport(sportIndex)} className="text-neutral-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
-                                {isGoogleSignedIn && (
+                                {isBackendConfigured && (
                                     <div className="w-64">
                                         <label htmlFor={`calendar-sport-${sport.id}`} className="block text-xs font-medium text-neutral-400 mb-1">Calendario Google per nuovi eventi</label>
                                         <select
@@ -726,7 +714,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 ))}
             </div>
-            {!isGoogleSignedIn && <p className="text-sm text-neutral-400 mt-4">Accedi a Google nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
+            {!isBackendConfigured && <p className="text-sm text-neutral-400 mt-4">Completa la configurazione nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
             <button onClick={handleAddSport} className="mt-6 w-full text-center bg-neutral-200/50 hover:bg-neutral-200 text-neutral-800 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
             <div className="mt-8 text-right">
                 <button 
@@ -739,23 +727,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
     );
     
-    const renderIntegrationsTab = () => (
-        <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
-            <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
-            {!isGapiLoaded || !isGisLoaded ? (
-                <p>Caricamento dei servizi Google in corso...</p>
-            ) : !isGoogleSignedIn ? (
-                <div className="text-center p-8 border-2 border-dashed border-neutral-200 rounded-lg">
-                    <p className="mb-4 text-neutral-400">Connetti il tuo account Google per sincronizzare automaticamente la tua disponibilità e creare eventi per le nuove prenotazioni.</p>
-                    <button onClick={onGoogleSignIn} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-                        Accedi con Google
-                    </button>
+    const renderIntegrationsTab = () => {
+        if (isCheckingAuth) {
+             return (
+                <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
+                    <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
+                    <p>Verifica della configurazione del backend in corso...</p>
                 </div>
-            ) : (
+            );
+        }
+
+        if (!isBackendConfigured) {
+            return (
+                <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
+                    <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
+                    <div className="text-center p-8 border-2 border-dashed border-red-400/50 rounded-lg bg-red-900/10">
+                        <p className="font-bold text-red-400 mb-2">Configurazione Richiesta</p>
+                        <p className="mb-4 text-neutral-400">
+                            L'integrazione con Google Calendar non è ancora attiva.
+                            <br/>
+                            Risolvi il problema indicato nel banner in cima alla pagina.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+        
+        return (
+            <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
+                <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
                 <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <p className="text-green-400 font-semibold">Connesso a Google Calendar.</p>
-                        <button onClick={onGoogleSignOut} className="text-sm text-red-500 hover:underline">Disconnetti</button>
+                    <div className="flex justify-between items-center mb-6 p-4 bg-green-900/10 border border-green-400/30 rounded-lg">
+                        <p className="text-green-400 font-semibold">Configurazione backend attiva e connessa a Google.</p>
+                        <button onClick={onRefreshAuthStatus} className="text-sm text-primary hover:underline">Verifica Stato</button>
                     </div>
                     
                     <h4 className="font-semibold text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
@@ -788,7 +792,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             ))}
                         </div>
                     ) : (
-                        <p className="text-neutral-400 p-4 bg-neutral-100 border border-neutral-200 rounded-md">Nessun calendario trovato.</p>
+                        <p className="text-neutral-400 p-4 bg-neutral-100 border border-neutral-200 rounded-md">Nessun calendario trovato o accessibile. Assicurati di aver condiviso i calendari con l'email del service account.</p>
                     )}
                     
                     <div className="mt-6 text-right">
@@ -800,11 +804,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             Salva Calendari Selezionati
                         </button>
                     </div>
-
                 </div>
-            )}
-        </div>
-    );
+            </div>
+        );
+    };
 
     const tabs = [
         { id: 'profile', label: 'Profilo' },
@@ -812,6 +815,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         { id: 'services', label: 'Servizi' },
         { id: 'integrations', label: 'Integrazioni'}
     ];
+    
+    const renderAuthError = () => {
+        if (!authError || isBackendConfigured) return null;
+    
+        const isSimpleConfigError = authError === 'BACKEND_NOT_CONFIGURED';
+        const detailedErrorMessage = isSimpleConfigError ? null : authError;
+    
+        return (
+            <div className="p-4 mb-6 bg-red-900/50 border border-red-400/80 text-red-300 rounded-lg shadow-lg" role="alert">
+                <h4 className="font-bold text-lg text-white mb-2">Azione Richiesta: Completa la Configurazione di Google</h4>
+                <p className="text-sm mb-4">
+                    L'integrazione con Google Calendar non è attiva o ha riscontrato un problema.
+                </p>
+                
+                {detailedErrorMessage && (
+                     <div className="mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+                        <p className="font-semibold text-red-300">Messaggio di errore dal server:</p>
+                        <p className="text-red-200 text-sm font-mono">{detailedErrorMessage}</p>
+                    </div>
+                )}
+    
+                <p className="text-sm mb-4 text-white font-semibold">Per risolvere, controlla attentamente i seguenti punti:</p>
+    
+                <div className="text-sm space-y-4 mb-4 pl-4 border-l-2 border-red-400/50">
+                    <div>
+                        <p className="font-semibold text-white">1. Posiziona il file delle credenziali</p>
+                        <p className="text-red-200 mt-1">
+                            Assicurati che il file <code>credentials.json</code> scaricato da Google Cloud sia nella cartella <code>functions</code> del tuo progetto e di aver rieseguito il deploy (<code>firebase deploy --only functions</code>).
+                        </p>
+                    </div>
+                    <div>
+                        <p className="font-semibold text-white">2. Abilita l'API di Google Calendar</p>
+                        <p className="text-red-200 mt-1">
+                            È un passaggio fondamentale. Visita il link seguente per assicurarti che l'API sia attiva per il tuo progetto. Se non lo è, abilitala.
+                            <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=gestionale-prenotazioni-lezio" target="_blank" rel="noopener noreferrer" className="block mt-2 font-bold text-white underline hover:text-red-200">
+                               Abilita Google Calendar API per 'gestionale-prenotazioni-lezio' &rarr;
+                            </a>
+                        </p>
+                    </div>
+                    <div>
+                        <p className="font-semibold text-white">3. Condividi i tuoi calendari</p>
+                        <p className="text-red-200 mt-1">
+                           Apri il file <code>credentials.json</code>, copia l'indirizzo email alla voce <code>client_email</code> e usalo per condividere i tuoi calendari da Google Calendar, assegnandogli i permessi per "Apportare modifiche agli eventi".
+                        </p>
+                    </div>
+                </div>
+                
+                <div className="mt-6 text-center">
+                    <button
+                        onClick={onRefreshAuthStatus}
+                        disabled={isCheckingAuth}
+                        className="bg-red-500/50 text-white font-semibold py-2 px-6 rounded-md border border-red-400 hover:bg-red-500/80 transition-colors disabled:opacity-50"
+                    >
+                        {isCheckingAuth ? 'Verifica...' : 'Ho completato i passaggi, Riprova'}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
 
     return (
         <div className="flex min-h-screen bg-neutral-100 text-neutral-600">
@@ -840,6 +903,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* Content */}
             <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+                {renderAuthError()}
+
                 {activeTab === 'profile' && renderProfileTab()}
                 {activeTab === 'hours' && renderHoursTab()}
                 {activeTab === 'services' && renderServicesTab()}

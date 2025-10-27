@@ -8,17 +8,7 @@ import BackgroundIcon from './components/BackgroundIcon';
 import { CogIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
-import { db } from './firebaseConfig';
-
-
-declare const gapi: any;
-// FIX: Augment the window interface to include the 'google' object from the Google Identity Services script.
-declare global {
-  interface Window {
-    google: any;
-  }
-}
+import { db, checkGoogleAuthStatus } from './firebaseConfig';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
@@ -26,7 +16,7 @@ function App() {
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [backgroundSport, setBackgroundSport] = useState<string | null>(null);
   
-  // App data state - will be populated from Firestore
+  // App data state
   const [sportsData, setSportsData] = useState<Sport[]>([]);
   const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo | null>(null);
   const [workingHours, setWorkingHours] = useState<WorkingHours>({});
@@ -37,14 +27,12 @@ function App() {
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
 
   // Auth state
-  const [isGoogleSignedIn, setIsGoogleSignedIn] = useState(false);
+  const [isBackendConfigured, setIsBackendConfigured] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   
-  // Google API state
-  const [gapiLoaded, setGapiLoaded] = useState(false);
-  const [gisLoaded, setGisLoaded] = useState(false);
-  const [tokenClient, setTokenClient] = useState<any>(null);
 
   // --- FIREBASE REALTIME DATA ---
   useEffect(() => {
@@ -61,7 +49,6 @@ function App() {
         setMinimumNoticeHours(data.minimumNoticeHours || INITIAL_MINIMUM_NOTICE_HOURS);
         setSelectedCalendarIds(data.googleCalendarIds || []);
       } else {
-        // First run: Initialize the config document in Firestore
         console.log("Configuration document not found. Initializing...");
         const initialConfig: AppConfig = {
           sportsData: INITIAL_SPORTS_DATA,
@@ -87,128 +74,36 @@ function App() {
       setIsLoadingConfig(false);
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
-  }, [isLoadingConfig]); // Rerun if needed, e.g. after first init
+  }, [isLoadingConfig]);
 
-  // --- GOOGLE API INITIALIZATION ---
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = () => {
-      gapi.load('client', initializeGapiClient);
-    };
-    document.body.appendChild(script);
-
-    const script2 = document.createElement('script');
-    script2.src = 'https://accounts.google.com/gsi/client';
-    script2.onload = () => {
-        setGisLoaded(true);
-    };
-    document.body.appendChild(script2);
-    
-    return () => {
-        // Clean up scripts on component unmount
-        document.body.removeChild(script);
-        document.body.removeChild(script2);
-    }
-  }, []);
-
-  const initializeGapiClient = useCallback(async () => {
+  // --- GOOGLE AUTH VIA FIREBASE FUNCTIONS ---
+  const checkAuth = useCallback(async () => {
+    setIsCheckingAuth(true);
+    setAuthError(null);
     try {
-      if (API_KEY.startsWith("INSERISCI_")) {
-        throw new Error("Configurazione Google API incompleta: Per favore, inserisci la tua API Key nel file googleConfig.ts.");
+      const result = await checkGoogleAuthStatus();
+      const data = result.data as { isConfigured: boolean };
+      if (typeof data?.isConfigured !== 'boolean') {
+        throw new Error("La risposta del server per lo stato di configurazione non è valida.");
       }
-      await gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-      });
-      setGapiLoaded(true); // GAPI is now fully loaded and initialized
+      setIsBackendConfigured(data.isConfigured);
+      if (!data.isConfigured) {
+        setAuthError('BACKEND_NOT_CONFIGURED');
+      }
     } catch (error: any) {
-        console.error("Error initializing Google API client:", error);
-        if (error.result?.error?.message) {
-             alert(`Errore nell'inizializzazione di Google API: ${error.result.error.message}. Controlla la tua API Key.`);
-        } else {
-             alert(error.message || "Errore nell'inizializzazione di Google API. Controlla che la API Key sia corretta e che la Google Calendar API sia abilitata nel tuo progetto Google Cloud.");
-        }
+      console.error("Error checking backend config status:", error);
+      setIsBackendConfigured(false);
+      setAuthError(error.message || "Si è verificato un errore sconosciuto durante la verifica della configurazione del backend.");
+    } finally {
+      setIsCheckingAuth(false);
     }
   }, []);
 
-  const initializeGisClient = useCallback(() => {
-    try {
-      if (CLIENT_ID.startsWith("INSERISCI_")) {
-        throw new Error("Configurazione Google API incompleta: Per favore, inserisci il tuo Client ID nel file googleConfig.ts.");
-      }
-      if (window.google?.accounts?.oauth2) {
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID,
-          scope: SCOPES,
-          callback: (tokenResponse: any) => {
-              if (tokenResponse.error) {
-                  console.error('Google token error:', tokenResponse);
-                  alert(`Accesso a Google fallito: ${tokenResponse.error_description || tokenResponse.error}. Controlla che il tuo Client ID sia configurato correttamente.`);
-                  return;
-              }
-              if (tokenResponse && tokenResponse.access_token) {
-                  gapi.client.setToken(tokenResponse);
-                  setIsGoogleSignedIn(true);
-
-                  // Persist the token in localStorage
-                  const expires_at = Date.now() + (tokenResponse.expires_in * 1000);
-                  localStorage.setItem('googleAuthToken', JSON.stringify({
-                      ...tokenResponse,
-                      expires_at
-                  }));
-              }
-          },
-        });
-        setTokenClient(client);
-      } else {
-        throw new Error("Lo script di Google Identity Services non è stato caricato correttamente.");
-      }
-    } catch(error: any) {
-        console.error("Error initializing Google Identity Services:", error);
-        alert(error.message || "Impossibile inizializzare l'accesso con Google. Controlla che il Client ID in googleConfig.ts sia corretto.");
-    }
-  }, []);
-  
-  // Effect to initialize GIS and check for a stored token
   useEffect(() => {
-    if (gapiLoaded && gisLoaded) {
-        initializeGisClient();
-        
-        // Check for persisted token once GAPI is ready
-        const storedToken = localStorage.getItem('googleAuthToken');
-        if (storedToken) {
-            const tokenData = JSON.parse(storedToken);
-            if (tokenData.expires_at > Date.now()) {
-                gapi.client.setToken(tokenData);
-                setIsGoogleSignedIn(true);
-            } else {
-                localStorage.removeItem('googleAuthToken'); // Clean up expired token
-            }
-        }
-    }
-  }, [gapiLoaded, gisLoaded, initializeGisClient]);
-
-  // --- GOOGLE AUTH HANDLERS ---
-  const handleGoogleSignIn = () => {
-    if (tokenClient) {
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    }
-  };
-
-  const handleGoogleSignOut = () => {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-      window.google.accounts.oauth2.revoke(token.access_token, () => {
-        gapi.client.setToken('');
-        setIsGoogleSignedIn(false);
-        localStorage.removeItem('googleAuthToken');
-      });
-    }
-  };
-
+    checkAuth();
+  }, [checkAuth]);
+  
   // --- NAVIGATION HANDLERS ---
   const handleSelectionComplete = (selection: LessonSelection) => {
     setLessonSelection(selection);
@@ -233,7 +128,7 @@ function App() {
     setBackgroundSport(null);
   };
   
-  // --- ADMIN HANDLERS (NOW SAVE TO FIRESTORE) ---
+  // --- ADMIN HANDLERS ---
   const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);
     setIsLoginModalOpen(false);
@@ -341,11 +236,10 @@ function App() {
         onSaveMinimumNoticeHours={handleSaveMinimumNoticeHours}
         onSaveSelectedCalendars={handleSaveSelectedCalendars}
         onLogout={handleAdminLogout}
-        isGoogleSignedIn={isGoogleSignedIn}
-        onGoogleSignIn={handleGoogleSignIn}
-        onGoogleSignOut={handleGoogleSignOut}
-        isGapiLoaded={gapiLoaded}
-        isGisLoaded={gisLoaded}
+        isBackendConfigured={isBackendConfigured}
+        onRefreshAuthStatus={checkAuth}
+        isCheckingAuth={isCheckingAuth}
+        authError={authError}
       />;
     }
 
@@ -366,7 +260,6 @@ function App() {
             slotInterval={slotInterval}
             minimumNoticeHours={minimumNoticeHours}
             consultant={consultantInfo}
-            isGoogleSignedIn={isGoogleSignedIn}
             selectedCalendarIds={selectedCalendarIds}
         />;
       case 'confirmation':
