@@ -118,6 +118,7 @@ const ConfirmationPage: React.FC<ConfirmationPageProps> = ({ booking, selection,
             </div>
           )}
         </div>
+
         <p className="text-sm text-neutral-400 mt-6">
           Un riepilogo è stato inviato al tuo indirizzo email: <span className="font-semibold text-neutral-800">{booking.email}</span>.
         </p>

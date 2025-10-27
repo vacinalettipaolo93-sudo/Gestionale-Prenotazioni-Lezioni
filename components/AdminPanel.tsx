@@ -728,27 +728,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     
     const renderIntegrationsTab = () => {
-        if (isCheckingAuth) {
+        // The main error banner `renderAuthError` already covers the !isBackendConfigured case.
+        // This tab can now focus on showing the tools available when configured.
+        if (!isBackendConfigured) {
              return (
                 <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
                     <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
-                    <p>Verifica della configurazione del backend in corso...</p>
-                </div>
-            );
-        }
-
-        if (!isBackendConfigured) {
-            return (
-                <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
-                    <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
-                    <div className="text-center p-8 border-2 border-dashed border-red-400/50 rounded-lg bg-red-900/10">
-                        <p className="font-bold text-red-400 mb-2">Configurazione Richiesta</p>
-                        <p className="mb-4 text-neutral-400">
-                            L'integrazione con Google Calendar non è ancora attiva.
-                            <br/>
-                            Risolvi il problema indicato nel banner in cima alla pagina.
-                        </p>
-                    </div>
+                    <p className="text-neutral-400">Completa la configurazione per visualizzare le opzioni di integrazione.</p>
                 </div>
             );
         }
@@ -759,7 +745,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div>
                     <div className="flex justify-between items-center mb-6 p-4 bg-green-900/10 border border-green-400/30 rounded-lg">
                         <p className="text-green-400 font-semibold">Configurazione backend attiva e connessa a Google.</p>
-                        <button onClick={onRefreshAuthStatus} className="text-sm text-primary hover:underline">Verifica Stato</button>
+                         <button 
+                            onClick={onRefreshAuthStatus} 
+                            className="text-sm text-primary hover:underline disabled:text-neutral-400 disabled:no-underline"
+                            disabled={isCheckingAuth}
+                        >
+                            {isCheckingAuth ? 'Verifica...' : 'Verifica Stato'}
+                        </button>
                     </div>
                     
                     <h4 className="font-semibold text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>

@@ -6,225 +6,151 @@ const fs = require("fs");
 
 admin.initializeApp();
 
-const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
+// --- CONFIGURAZIONE CON SERVICE ACCOUNT ---
 
-let credentials;
-try {
-  const content = fs.readFileSync(CREDENTIALS_PATH);
-  credentials = JSON.parse(content);
-} catch (error) {
-  console.error("Errore nel leggere o parsare il file credentials.json:", error);
-}
-
-const getOAuth2Client = (redirectUri) => {
-  const { client_secret, client_id } = credentials.web;
-  return new google.auth.OAuth2(client_id, client_secret, redirectUri);
-};
-
-exports.authorizeGoogle = functions.https.onRequest((req, res) => {
-  res.set("Access-Control-Allow-Origin", "*");
-  if (req.method === "OPTIONS") {
-    res.set("Access-Control-Allow-Methods", "GET");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
-    res.set("Access-Control-Max-Age", "3600");
-    res.status(204).send("");
-    return;
+const getAuthenticatedClient = async () => {
+  const credentialsPath = path.resolve(__dirname, "./credentials.json");
+  if (!fs.existsSync(credentialsPath)) {
+    // This error will be handled by the caller, which knows if it's a missing config or an error.
+    throw new Error("File credentials.json non trovato nella cartella /functions.");
   }
+
   try {
-    const { redirect_uris } = credentials.web;
-    const oAuth2Client = getOAuth2Client(redirect_uris[0]);
-    const authUrl = oAuth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: [
+    const auth = new google.auth.GoogleAuth({
+      keyFile: credentialsPath,
+      scopes: [
         "https://www.googleapis.com/auth/calendar.events",
         "https://www.googleapis.com/auth/calendar.readonly",
       ],
-      prompt: "consent",
     });
-    res.status(200).send({ authUrl });
+    return await auth.getClient();
   } catch (error) {
-    console.error("Errore in authorizeGoogle:", error);
-    res.status(500).send("Errore durante la creazione dell'URL di autorizzazione.");
+    console.error("getAuthenticatedClient failed:", error.message);
+    let detailedMessage = `Errore di autenticazione: ${error.message}.`;
+    if (error.message && error.message.toLowerCase().includes('api is not enabled')) {
+        detailedMessage += " Assicurati che l'API di Google Calendar sia abilitata nel tuo progetto Google Cloud.";
+    } else {
+        detailedMessage += " Assicurati che il file 'credentials.json' sia valido e non corrotto.";
+    }
+    // Create a new error with a more descriptive message to be thrown.
+    const augmentedError = new Error(detailedMessage);
+    augmentedError.stack = error.stack; // Preserve the original stack for debugging
+    throw augmentedError;
   }
+};
+
+const handleApiError = (error, functionName) => {
+    console.error(`Errore in ${functionName}:`, error.message);
+    // If it's already an HttpsError (thrown by a dependency or us), rethrow it
+    if (error.code && error.httpErrorCode) {
+        throw error;
+    }
+    // Otherwise, wrap it in a new HttpsError
+    const serverMessage = error.message || `Errore sconosciuto in ${functionName}.`;
+    // The client SDK sometimes replaces the 'message' for 'internal' errors.
+    // The 'details' object is the reliable way to pass custom error data.
+    throw new functions.https.HttpsError('internal', `An internal error occurred in ${functionName}.`, { serverMessage });
+};
+
+// --- FUNZIONI CALLABLE DAL FRONTEND ---
+
+exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => {
+    const credentialsPath = path.resolve(__dirname, "./credentials.json");
+    if (!fs.existsSync(credentialsPath)) {
+        // If the file does not exist, it's a "not configured" state.
+        return { isConfigured: false };
+    }
+    
+    try {
+        // A more robust check: attempt a real, lightweight API call.
+        const authClient = await getAuthenticatedClient();
+        const calendar = google.calendar({ version: "v3", auth: authClient });
+        
+        // This call will fail if the API is not enabled or auth is fundamentally broken.
+        // It doesn't matter if it returns calendars or not; we just need it to not throw an error.
+        await calendar.calendarList.list({ maxResults: 1 });
+        
+        // If the call succeeds, the backend is configured correctly.
+        return { isConfigured: true };
+    } catch (error) {
+        const errorMessage = error.message || 'An unknown authentication error occurred.';
+        console.error("checkGoogleAuthStatus failed during API verification:", errorMessage);
+        
+        // The file exists but the API call failed. This is an error state.
+        // Propagate the detailed error message for the frontend to display.
+        throw new functions.https.HttpsError('internal', 'Backend configuration check failed.', { serverMessage: errorMessage });
+    }
 });
 
-exports.googleCallback = functions.https.onRequest(async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    res.status(400).send("Codice di autorizzazione mancante.");
-    return;
-  }
-  try {
-    const { redirect_uris } = credentials.web;
-    const oAuth2Client = getOAuth2Client(redirect_uris[0]);
-    const { tokens } = await oAuth2Client.getToken(code);
-    await admin.firestore().collection("secrets").doc("googleApiTokens").set({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiryDate: tokens.expiry_date,
-    });
-    res.status(200).send(`
-      <html><head><style>body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f4f8; } div { text-align: center; padding: 40px; background-color: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } h1 { color: #27ae60; } p { color: #333; }</style></head><body><div><h1>Autorizzazione completata con successo!</h1><p>Ora puoi chiudere questa finestra e tornare al pannello di amministrazione.</p></div></body></html>
-    `);
-  } catch (error) {
-    console.error("Errore durante lo scambio del codice con i token:", error);
-    res.status(500).send("Errore durante l'ottenimento dei token di accesso.");
-  }
-});
 
-async function getAuthenticatedClient() {
-  const tokenDoc = await admin.firestore().collection("secrets").doc("googleApiTokens").get();
-  if (!tokenDoc.exists) {
-    throw new Error("Token non trovati in Firestore. Eseguire prima l'autorizzazione.");
-  }
-  const tokens = tokenDoc.data();
-  const { redirect_uris } = credentials.web;
-  const oAuth2Client = getOAuth2Client(redirect_uris[0]);
-  oAuth2Client.setCredentials({
-    access_token: tokens.accessToken,
-    refresh_token: tokens.refreshToken,
-    expiry_date: tokens.expiryDate,
-  });
-  return new Promise((resolve, reject) => {
-    oAuth2Client.getAccessToken((err, newAccessToken, response) => {
-        if (err) {
-            return reject(new Error("Impossibile aggiornare il token di accesso: " + err));
-        }
-        // Il nuovo access token potrebbe essere diverso, o potrebbe esserci una nuova expiry_date
-        const newTokens = response.credentials;
-        if (newTokens.access_token !== tokens.accessToken || newTokens.expiry_date !== tokens.expiryDate) {
-            admin.firestore().collection("secrets").doc("googleApiTokens").update({
-                accessToken: newTokens.access_token,
-                expiryDate: newTokens.expiry_date,
-            }).then(() => {
-                oAuth2Client.setCredentials(newTokens); // Assicura che il client usi i token più recenti
-                resolve(oAuth2Client);
-            }).catch(reject);
-        } else {
-            resolve(oAuth2Client);
-        }
-    });
-  });
-}
+exports.getGoogleCalendarList = functions.https.onCall(async (data, context) => {
+    try {
+        const authClient = await getAuthenticatedClient();
+        const calendar = google.calendar({ version: "v3", auth: authClient });
+        const res = await calendar.calendarList.list();
+        return { calendars: res.data.items };
+    } catch (error) {
+        handleApiError(error, 'getGoogleCalendarList');
+    }
+});
 
 exports.getGoogleCalendarAvailability = functions.https.onCall(async (data, context) => {
-  const { timeMin, timeMax, calendarIds } = data;
-  if (!timeMin || !timeMax || !calendarIds || !Array.isArray(calendarIds)) {
-    throw new functions.https.HttpsError("invalid-argument", "timeMin, timeMax e calendarIds (array) sono richiesti.");
-  }
-  try {
-    const oAuth2Client = await getAuthenticatedClient();
-    const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
-    const response = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: timeMin,
-        timeMax: timeMax,
-        items: calendarIds.map((id) => ({ id: id })),
-      },
-    });
-    const busySlots = [];
-    for (const calId in response.data.calendars) {
-      if (response.data.calendars.hasOwnProperty(calId)) {
-        const calendarData = response.data.calendars[calId];
-        if (calendarData.busy) {
-          calendarData.busy.forEach((slot) => {
-            busySlots.push({ start: slot.start, end: slot.end });
-          });
+    const { timeMin, timeMax, calendarIds } = data;
+    
+    if (!timeMin || !timeMax || !calendarIds) {
+        throw new functions.https.HttpsError('invalid-argument', 'Parametri timeMin, timeMax e calendarIds richiesti.');
+    }
+    
+    try {
+        const authClient = await getAuthenticatedClient();
+        const calendar = google.calendar({ version: "v3", auth: authClient });
+        const res = await calendar.freebusy.query({
+            requestBody: {
+                timeMin,
+                timeMax,
+                items: calendarIds.map(id => ({ id })),
+                timeZone: 'Europe/Rome',
+            },
+        });
+        
+        let busySlots = [];
+        if (res.data.calendars) {
+            for (const calId in res.data.calendars) {
+                if (res.data.calendars[calId] && res.data.calendars[calId].busy) {
+                    busySlots = busySlots.concat(res.data.calendars[calId].busy);
+                }
+            }
         }
-      }
+
+        return { busy: busySlots };
+    } catch (error) {
+        handleApiError(error, 'getGoogleCalendarAvailability');
     }
-    return { busy: busySlots };
-  } catch (error) {
-    console.error("Errore in getGoogleCalendarAvailability:", error.message);
-    if (error.message.includes("Token non trovati")) {
-      throw new functions.https.HttpsError("unauthenticated", "Autorizzazione Google richiesta.");
-    }
-    throw new functions.https.HttpsError("internal", "Errore nel recuperare la disponibilità del calendario.");
-  }
 });
 
 exports.createGoogleCalendarEvent = functions.https.onCall(async (data, context) => {
-  const { event, calendarId, sendUpdates } = data;
-  if (!event || !calendarId) {
-    throw new functions.https.HttpsError("invalid-argument", "L'oggetto 'event' e 'calendarId' sono richiesti.");
-  }
-  try {
-    const oAuth2Client = await getAuthenticatedClient();
-    const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
-    const result = await calendar.events.insert({
-      calendarId: calendarId,
-      resource: event,
-      sendUpdates: sendUpdates || "none",
-    });
-    return { success: true, eventId: result.data.id, eventLink: result.data.htmlLink };
-  } catch (error) {
-    console.error("Errore in createGoogleCalendarEvent:", error.message);
-    if (error.message.includes("Token non trovati")) {
-      throw new functions.https.HttpsError("unauthenticated", "Autorizzazione Google richiesta.");
+    const { event, calendarId, sendUpdates } = data;
+    if (!event || !calendarId) {
+        throw new functions.https.HttpsError("invalid-argument", "L'oggetto 'event' e 'calendarId' sono richiesti.");
     }
-    throw new functions.https.HttpsError("internal", "Errore durante la creazione dell'evento su Google Calendar.");
-  }
-});
+    
+    try {
+        const authClient = await getAuthenticatedClient();
+        const calendar = google.calendar({ version: "v3", auth: authClient });
 
-exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => {
-  try {
-    const tokenDoc = await admin.firestore().collection("secrets").doc("googleApiTokens").get();
-    return { isSignedIn: tokenDoc.exists && !!tokenDoc.data().refreshToken };
-  } catch (error) {
-    console.error("Errore in checkGoogleAuthStatus:", error);
-    return { isSignedIn: false };
-  }
-});
+        const createdEvent = await calendar.events.insert({
+            calendarId: calendarId,
+            requestBody: event,
+            sendUpdates: sendUpdates || 'none',
+        });
 
-exports.signOutGoogle = functions.https.onCall(async (data, context) => {
-  try {
-    const tokenDocRef = admin.firestore().collection("secrets").doc("googleApiTokens");
-    const tokenDoc = await tokenDocRef.get();
-    if (tokenDoc.exists) {
-        const tokens = tokenDoc.data();
-        if (tokens.refreshToken) {
-            const oAuth2Client = getOAuth2Client(credentials.web.redirect_uris[0]);
-            try {
-                await oAuth2Client.revokeToken(tokens.refreshToken);
-            } catch(e) {
-                console.warn("Revoca del refresh token fallita (potrebbe essere già stato revocato):", e.message);
-            }
-        }
-        await tokenDocRef.delete();
+        return { 
+            success: true, 
+            eventId: createdEvent.data.id,
+            eventUrl: createdEvent.data.htmlLink,
+        };
+    } catch (error) {
+        // Now we propagate the error because the frontend depends on the result.
+        handleApiError(error, 'createGoogleCalendarEvent');
     }
-    return { success: true };
-  } catch (error) {
-    console.error("Errore in signOutGoogle:", error);
-    throw new functions.https.HttpsError("internal", "Errore durante il logout da Google.");
-  }
-});
-
-// NUOVA FUNZIONE per ottenere la lista dei calendari
-exports.getGoogleCalendarList = functions.https.onCall(async (data, context) => {
-  try {
-    const oAuth2Client = await getAuthenticatedClient();
-    const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
-
-    const response = await calendar.calendarList.list({
-        // minAccessRole: 'writer' // Puoi filtrare se vuoi solo calendari modificabili
-    });
-
-    if (!response.data.items) {
-        return { calendars: [] };
-    }
-
-    const calendarList = response.data.items.map(cal => ({
-        id: cal.id,
-        summary: cal.summary,
-        accessRole: cal.accessRole
-    }));
-
-    return { calendars: calendarList };
-  } catch (error) {
-    console.error("Errore in getGoogleCalendarList:", error.message);
-    if (error.message.includes("Token non trovati")) {
-      throw new functions.https.HttpsError("unauthenticated", "Autorizzazione Google richiesta.");
-    }
-    throw new functions.https.HttpsError("internal", "Errore nel recuperare l'elenco dei calendari.");
-  }
 });

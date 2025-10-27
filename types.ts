@@ -40,6 +40,7 @@ export interface Booking {
   email: string;
   phone: string;
   participants: string[];
+  googleEventId?: string;
 }
 
 // Represents the user's final selection before navigating to the booking page

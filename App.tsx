@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
@@ -94,7 +95,10 @@ function App() {
     } catch (error: any) {
       console.error("Error checking backend config status:", error);
       setIsBackendConfigured(false);
-      setAuthError(error.message || "Si è verificato un errore sconosciuto durante la verifica della configurazione del backend.");
+      // For Firebase HttpsError, the detailed message might be in `error.details`.
+      // The `error.message` can sometimes be a generic string based on the error code.
+      const detailedMessage = error?.details?.serverMessage || error.message;
+      setAuthError(detailedMessage || "Si è verificato un errore sconosciuto durante la verifica della configurazione del backend.");
     } finally {
       setIsCheckingAuth(false);
     }
