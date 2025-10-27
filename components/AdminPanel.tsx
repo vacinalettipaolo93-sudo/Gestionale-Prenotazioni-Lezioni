@@ -16,12 +16,14 @@ interface AdminPanelProps {
     initialSportsData: Sport[];
     initialConsultantInfo: ConsultantInfo;
     initialSlotInterval: number;
+    initialMinimumNoticeHours: number;
     initialSelectedCalendarIds: string[];
     onSaveWorkingHours: (newHours: WorkingHours) => void;
     onSaveDateOverrides: (newOverrides: DateOverrides) => void;
     onSaveSportsData: (newSports: Sport[]) => void;
     onSaveConsultantInfo: (newInfo: ConsultantInfo) => void;
     onSaveSlotInterval: (newInterval: number) => void;
+    onSaveMinimumNoticeHours: (newNotice: number) => void;
     onSaveSelectedCalendars: (calendarIds: string[]) => void;
     onLogout: () => void;
     isGoogleSignedIn: boolean;
@@ -37,12 +39,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     initialSportsData,
     initialConsultantInfo,
     initialSlotInterval,
+    initialMinimumNoticeHours,
     initialSelectedCalendarIds,
     onSaveWorkingHours,
     onSaveDateOverrides,
     onSaveSportsData,
     onSaveConsultantInfo,
     onSaveSlotInterval,
+    onSaveMinimumNoticeHours,
     onSaveSelectedCalendars,
     onLogout,
     isGoogleSignedIn,
@@ -56,6 +60,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [sportsData, setSportsData] = useState<Sport[]>(JSON.parse(JSON.stringify(initialSportsData)));
     const [consultantInfo, setConsultantInfo] = useState<ConsultantInfo>(initialConsultantInfo);
     const [slotInterval, setSlotInterval] = useState<number>(initialSlotInterval);
+    const [minimumNoticeHours, setMinimumNoticeHours] = useState<number>(initialMinimumNoticeHours);
     const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(initialSelectedCalendarIds);
     
     const [activeTab, setActiveTab] = useState('profile');
@@ -82,6 +87,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setSportsData(JSON.parse(JSON.stringify(initialSportsData))), [initialSportsData]);
     useEffect(() => setConsultantInfo(initialConsultantInfo), [initialConsultantInfo]);
     useEffect(() => setSlotInterval(initialSlotInterval), [initialSlotInterval]);
+    useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
     // Fetch Google Calendars when user is signed in
@@ -272,7 +278,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const handleLocationIntervalChangeByName = (locationName: string, value: string) => {
         const newInterval = parseInt(value, 10);
-        updateState(setSportsData, (draft) => {
+        // FIX: Explicitly type `draft` as `Sport[]` to resolve a TypeScript inference issue.
+        updateState(setSportsData, (draft: Sport[]) => {
             draft.forEach(sport => {
                 sport.lessonTypes.forEach(lt => {
                     lt.locations.forEach(loc => {
@@ -290,7 +297,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     };
 
     const handleLocationCalendarChangeByName = (locationName: string, calendarId: string) => {
-        updateState(setSportsData, (draft) => {
+        // FIX: Explicitly type `draft` as `Sport[]` to resolve a TypeScript inference issue.
+        updateState(setSportsData, (draft: Sport[]) => {
             draft.forEach(sport => {
                 sport.lessonTypes.forEach(lt => {
                     lt.locations.forEach(loc => {
@@ -433,6 +441,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
                     >
                         Salva Intervallo Globale
+                    </button>
+                </div>
+            </div>
+
+            {/* Minimum Notice */}
+            <div className="mb-8 pb-8 border-b border-neutral-200">
+                 <h3 className="text-xl font-semibold mb-4 text-neutral-800">Preavviso Minimo Prenotazione</h3>
+                 <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200">
+                    <label htmlFor="minimum-notice" className="font-medium text-neutral-400 block mb-2">Impedisci prenotazioni effettuate con meno di:</label>
+                    <select
+                        id="minimum-notice"
+                        value={minimumNoticeHours}
+                        onChange={(e) => setMinimumNoticeHours(Number(e.target.value))}
+                        className="p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
+                    >
+                        <option value="0">Nessun preavviso</option>
+                        <option value="2">2 ore di preavviso</option>
+                        <option value="4">4 ore di preavviso</option>
+                        <option value="8">8 ore di preavviso</option>
+                        <option value="12">12 ore di preavviso</option>
+                        <option value="24">24 ore di preavviso</option>
+                        <option value="48">48 ore di preavviso</option>
+                    </select>
+                    <p className="text-xs text-neutral-400 mt-2">Gli utenti non potranno prenotare fasce orarie che iniziano prima di questo preavviso.</p>
+                 </div>
+                 <div className="mt-4 text-right">
+                    <button 
+                        onClick={() => onSaveMinimumNoticeHours(minimumNoticeHours)} 
+                        className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                    >
+                        Salva Preavviso Minimo
                     </button>
                 </div>
             </div>
@@ -581,17 +620,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </button>
                 </form>
                 <div className="space-y-2">
-                    {Object.entries(dateOverrides).sort().map(([date, hours]) => (
-                        <div key={date} className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-md">
-                            <span className="font-semibold text-neutral-800">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                            {hours ? (
-                                <span className="text-green-400">{`${String(Math.floor(hours.start / 60)).padStart(2, '0')}:${String(hours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(hours.end / 60)).padStart(2, '0')}:${String(hours.end % 60).padStart(2, '0')}`}</span>
-                            ) : (
-                                <span className="text-red-400">Non disponibile</span>
-                            )}
-                            <button onClick={() => handleRemoveOverride(date)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-5 h-5"/></button>
-                        </div>
-                    ))}
+                    {Object.entries(dateOverrides).sort().map(([date, hours]) => {
+                        // FIX: Explicitly cast `hours` to its correct type to resolve a TypeScript inference issue with `Object.entries`.
+                        const typedHours = hours as { start: number; end: number } | null;
+                        return (
+                            <div key={date} className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-md">
+                                <span className="font-semibold text-neutral-800">{new Date(date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                {typedHours ? (
+                                    <span className="text-green-400">{`${String(Math.floor(typedHours.start / 60)).padStart(2, '0')}:${String(typedHours.start % 60).padStart(2, '0')}`} - {`${String(Math.floor(typedHours.end / 60)).padStart(2, '0')}:${String(typedHours.end % 60).padStart(2, '0')}`}</span>
+                                ) : (
+                                    <span className="text-red-400">Non disponibile</span>
+                                )}
+                                <button onClick={() => handleRemoveOverride(date)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-5 h-5"/></button>
+                            </div>
+                        );
+                    })}
                 </div>
                  <div className="mt-6 text-right">
                     <button 

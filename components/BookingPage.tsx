@@ -14,6 +14,7 @@ interface BookingPageProps {
   workingHours: WorkingHours;
   dateOverrides: DateOverrides;
   slotInterval: number;
+  minimumNoticeHours: number;
   consultant: ConsultantInfo;
   isGoogleSignedIn: boolean;
   selectedCalendarIds: string[];
@@ -21,7 +22,7 @@ interface BookingPageProps {
 
 const BookingPage: React.FC<BookingPageProps> = ({ 
     selection, onBookingConfirmed, onBack, workingHours, 
-    dateOverrides, slotInterval, consultant, isGoogleSignedIn, selectedCalendarIds
+    dateOverrides, slotInterval, minimumNoticeHours, consultant, isGoogleSignedIn, selectedCalendarIds
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -113,7 +114,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 ? selection.location.slotInterval
                 : slotInterval;
 
-            const times = generateAvailableTimes(selectedDate, selection.option.duration, existingBookings, calendarEvents, workingHours, effectiveSlotInterval, dateOverrides);
+            const times = generateAvailableTimes(selectedDate, selection.option.duration, existingBookings, calendarEvents, workingHours, effectiveSlotInterval, dateOverrides, minimumNoticeHours);
             setAvailableTimes(times);
         } catch (error) {
             console.error("Error fetching bookings or calendar events:", error);
@@ -129,7 +130,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
       setAvailableTimes([]);
     }
     setSelectedTime(null);
-  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, isGoogleSignedIn, selectedCalendarIds]);
+  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, minimumNoticeHours, isGoogleSignedIn, selectedCalendarIds]);
 
   const handleDayClick = (day: Date) => {
     if (day.getTime() < new Date(new Date().setHours(0, 0, 0, 0)).getTime()) return;

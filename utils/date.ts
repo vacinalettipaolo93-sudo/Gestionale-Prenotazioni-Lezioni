@@ -37,7 +37,8 @@ export const generateAvailableTimes = (
   calendarEvents: CalendarEvent[],
   workingHoursConfig: WorkingHours,
   slotInterval: number,
-  dateOverrides: DateOverrides
+  dateOverrides: DateOverrides,
+  minimumNoticeHours: number
 ): string[] => {
   const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
   const override = dateOverrides[dateKey];
@@ -87,6 +88,9 @@ export const generateAvailableTimes = (
     }
   }
 
+  // Calculate the earliest bookable time based on the minimum notice
+  const earliestBookableTime = new Date();
+  earliestBookableTime.setHours(earliestBookableTime.getHours() + minimumNoticeHours);
 
   for (let time = loopStartTime; time < end; time += timeStep) {
     const slotStart = time;
@@ -98,8 +102,8 @@ export const generateAvailableTimes = (
     const slotStartTime = new Date(date);
     slotStartTime.setHours(Math.floor(slotStart / 60), slotStart % 60, 0, 0);
 
-    // Don't show slots in the past
-    if (slotStartTime.getTime() < new Date().getTime()) continue;
+    // Don't show slots that are before the minimum notice period
+    if (slotStartTime.getTime() < earliestBookableTime.getTime()) continue;
 
     // Check for conflicts with all busy slots
     const isConflict = allBusySlots.some(busySlot => {

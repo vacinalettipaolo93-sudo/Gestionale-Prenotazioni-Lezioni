@@ -114,7 +114,7 @@ const EventTypeSelection: React.FC<EventTypeSelectionProps> = ({ sports, onSelec
   return (
     <div className="p-6 sm:p-8">
       <div className="flex items-center mb-8">
-        <img src={consultant.avatarUrl} alt={consultant.name} className="w-20 h-20 rounded-full mr-4 border-2 border-neutral-200" />
+        <img src={consultant.avatarUrl} alt={consultant.name} className="w-20 h-20 rounded-lg mr-4 border-2 border-neutral-200" />
         <div>
           <h1 className="text-2xl font-bold text-neutral-800">{consultant.name}</h1>
           <p className="text-neutral-400">{consultant.title}</p>

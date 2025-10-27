@@ -7,7 +7,7 @@ import LoginModal from './components/LoginModal';
 import BackgroundIcon from './components/BackgroundIcon';
 import { CogIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
-import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL } from './constants';
+import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from './googleConfig';
 import { db } from './firebaseConfig';
 
@@ -33,6 +33,7 @@ function App() {
   const [dateOverrides, setDateOverrides] = useState<DateOverrides>({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [slotInterval, setSlotInterval] = useState(INITIAL_SLOT_INTERVAL);
+  const [minimumNoticeHours, setMinimumNoticeHours] = useState(INITIAL_MINIMUM_NOTICE_HOURS);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
 
   // Auth state
@@ -57,6 +58,7 @@ function App() {
         setWorkingHours(data.workingHours);
         setDateOverrides(data.dateOverrides);
         setSlotInterval(data.slotInterval || INITIAL_SLOT_INTERVAL);
+        setMinimumNoticeHours(data.minimumNoticeHours || INITIAL_MINIMUM_NOTICE_HOURS);
         setSelectedCalendarIds(data.googleCalendarIds || []);
       } else {
         // First run: Initialize the config document in Firestore
@@ -67,6 +69,7 @@ function App() {
           workingHours: INITIAL_WORKING_HOURS,
           dateOverrides: INITIAL_DATE_OVERRIDES,
           slotInterval: INITIAL_SLOT_INTERVAL,
+          minimumNoticeHours: INITIAL_MINIMUM_NOTICE_HOURS,
           googleCalendarIds: [],
         };
         try {
@@ -290,6 +293,16 @@ function App() {
     }
   }
 
+  const handleSaveMinimumNoticeHours = async (newNotice: number) => {
+    try {
+      await db.collection('configuration').doc('main').update({ minimumNoticeHours: newNotice });
+      alert('Preavviso minimo di prenotazione aggiornato!');
+    } catch (error) {
+      console.error("Error saving minimum notice:", error);
+      alert("Errore nel salvataggio del preavviso minimo.");
+    }
+  }
+
   const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
     try {
       await db.collection('configuration').doc('main').update({ googleCalendarIds: calendarIds });
@@ -318,12 +331,14 @@ function App() {
         initialDateOverrides={dateOverrides}
         initialConsultantInfo={consultantInfo}
         initialSlotInterval={slotInterval}
+        initialMinimumNoticeHours={minimumNoticeHours}
         initialSelectedCalendarIds={selectedCalendarIds}
         onSaveSportsData={handleSaveSportsData}
         onSaveWorkingHours={handleSaveWorkingHours}
         onSaveDateOverrides={handleSaveDateOverrides}
         onSaveConsultantInfo={handleSaveConsultantInfo}
         onSaveSlotInterval={handleSaveSlotInterval}
+        onSaveMinimumNoticeHours={handleSaveMinimumNoticeHours}
         onSaveSelectedCalendars={handleSaveSelectedCalendars}
         onLogout={handleAdminLogout}
         isGoogleSignedIn={isGoogleSignedIn}
@@ -349,6 +364,7 @@ function App() {
             workingHours={workingHours}
             dateOverrides={dateOverrides}
             slotInterval={slotInterval}
+            minimumNoticeHours={minimumNoticeHours}
             consultant={consultantInfo}
             isGoogleSignedIn={isGoogleSignedIn}
             selectedCalendarIds={selectedCalendarIds}

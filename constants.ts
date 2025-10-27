@@ -1,6 +1,7 @@
 import type { Sport, ConsultantInfo, WorkingHours, DateOverrides } from './types';
 
 export const INITIAL_SLOT_INTERVAL = 30; // Default to 30 minutes
+export const INITIAL_MINIMUM_NOTICE_HOURS = 4; // Default to 4 hours notice
 
 export const INITIAL_CONSULTANT_INFO: ConsultantInfo = {
   name: 'Paolo V.',
