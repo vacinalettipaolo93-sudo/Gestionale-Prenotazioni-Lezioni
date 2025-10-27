@@ -101,7 +101,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     setAllGoogleCalendars(data.calendars || []);
                 } catch (error: any) {
                      console.error("Error fetching calendar list:", error);
-                    setCalendarError(error.message || "Impossibile caricare l'elenco dei calendari. Controlla la configurazione e la condivisione del calendario.");
+                    const serverMessage = error?.details?.serverMessage || error.message;
+                    setCalendarError(serverMessage || "Impossibile caricare l'elenco dei calendari. Controlla la configurazione e la condivisione del calendario.");
                 } finally {
                     setIsLoadingCalendars(false);
                 }

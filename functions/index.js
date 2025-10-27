@@ -80,7 +80,9 @@ const handleApiError = (error, functionName) => {
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
 
-exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => {
+exports.checkGoogleAuthStatus = functions
+    .runWith({ timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
     const credentialsPath = path.resolve(__dirname, "./credentials.json");
     if (!fs.existsSync(credentialsPath)) {
         return { isConfigured: false };
@@ -99,18 +101,40 @@ exports.checkGoogleAuthStatus = functions.https.onCall(async (data, context) => 
 });
 
 
-exports.getGoogleCalendarList = functions.https.onCall(async (data, context) => {
+exports.getGoogleCalendarList = functions
+    .runWith({ timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
-        const res = await calendar.calendarList.list();
-        return { calendars: res.data.items };
+        
+        let allCalendars = [];
+        let pageToken = null;
+        
+        // Loop to handle pagination and fetch all available calendars.
+        do {
+            const res = await calendar.calendarList.list({
+                maxResults: 250, // Max allowed per page
+                pageToken: pageToken,
+                // Request only the fields we need to reduce payload size
+                fields: 'items(id,summary,accessRole),nextPageToken',
+            });
+
+            if (res.data.items) {
+                allCalendars = allCalendars.concat(res.data.items);
+            }
+            pageToken = res.data.nextPageToken;
+        } while (pageToken);
+
+        return { calendars: allCalendars };
     } catch (error) {
         handleApiError(error, 'getGoogleCalendarList');
     }
 });
 
-exports.getGoogleCalendarAvailability = functions.https.onCall(async (data, context) => {
+exports.getGoogleCalendarAvailability = functions
+    .runWith({ timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
     const { timeMin, timeMax, calendarIds } = data;
     
     if (!timeMin || !timeMax || !calendarIds) {
@@ -144,7 +168,9 @@ exports.getGoogleCalendarAvailability = functions.https.onCall(async (data, cont
     }
 });
 
-exports.createGoogleCalendarEvent = functions.https.onCall(async (data, context) => {
+exports.createGoogleCalendarEvent = functions
+    .runWith({ timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
     const { event, calendarId, sendUpdates } = data;
     if (!event || !calendarId) {
         throw new functions.https.HttpsError("invalid-argument", "L'oggetto 'event' e 'calendarId' sono richiesti.");
