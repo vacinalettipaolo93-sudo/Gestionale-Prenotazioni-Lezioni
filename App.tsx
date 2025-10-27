@@ -96,16 +96,12 @@ function App() {
       console.error("Error checking backend config status:", error);
       setIsBackendConfigured(false);
 
-      // Check for specific Firebase permission denied error, which often comes as 'internal' or 'unauthenticated'
       if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('permission denied') || error.message.toLowerCase().includes('unauthenticated')))) {
          setAuthError(
-            'PERMISSION_DENIED: L\'applicazione non ha i permessi per chiamare le funzioni del backend. ' +
-            'Assicurati che le Cloud Functions siano accessibili pubblicamente. ' +
-            'Vai nella Google Cloud Console -> Cloud Functions -> [nome funzione] -> Permessi, e aggiungi il principal "allUsers" con il ruolo "Cloud Run Invoker".'
+            'ERRORE DI PERMESSI (Unauthenticated): L\'applicazione non ha il permesso di chiamare le funzioni sul server. ' +
+            'SOLUZIONE: Vai su Google Cloud Console -> Cloud Run, clicca su ciascuna delle tue 4 funzioni (es. checkgoogleauthstatus), vai alla scheda "Sicurezza" e seleziona "Consenti accesso pubblico".'
         );
       } else {
-        // For other Firebase HttpsError, the detailed message might be in `error.details`.
-        // The `error.message` can sometimes be a generic string based on the error code.
         const detailedMessage = error?.details?.serverMessage || error.message;
         setAuthError(detailedMessage || "Si è verificato un errore sconosciuto durante la verifica della configurazione del backend.");
       }
