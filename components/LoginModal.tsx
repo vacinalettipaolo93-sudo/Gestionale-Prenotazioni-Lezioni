@@ -19,6 +19,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
         setError('');
         setIsLoading(true);
 
+        if (!auth) {
+            setError("Errore di configurazione: Firebase non è inizializzato.");
+            setIsLoading(false);
+            return;
+        }
+
         try {
             await auth.signInWithEmailAndPassword(email, password);
             onLoginSuccess();

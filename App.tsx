@@ -7,10 +7,10 @@ import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import BackgroundIcon from './components/BackgroundIcon';
 import Toast from './components/Toast';
-import { CogIcon } from './components/icons';
+import { CogIcon, InformationCircleIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { db, checkGoogleAuthStatus, auth } from './firebaseConfig';
+import { db, checkGoogleAuthStatus, auth, isFirebaseConfigValid } from './firebaseConfig';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
@@ -46,6 +46,11 @@ function App() {
 
   // --- FIREBASE REALTIME DATA ---
   useEffect(() => {
+    if (!isFirebaseConfigValid) {
+        setIsLoadingConfig(false);
+        return;
+    }
+
     const configRef = db.collection('configuration').doc('main');
 
     const unsubscribe = configRef.onSnapshot(async (doc) => {
@@ -89,6 +94,7 @@ function App() {
 
   // --- FIREBASE AUTH STATE ---
   useEffect(() => {
+    if (!isFirebaseConfigValid) return;
     const unsubscribe = auth.onAuthStateChanged(user => {
         setIsAdminLoggedIn(!!user);
     });
@@ -97,6 +103,10 @@ function App() {
 
   // --- GOOGLE AUTH VIA FIREBASE FUNCTIONS ---
   const checkAuth = useCallback(async () => {
+    if (!isFirebaseConfigValid) {
+        setIsCheckingAuth(false);
+        return;
+    }
     setIsCheckingAuth(true);
     setAuthError(null);
     try {
@@ -309,6 +319,38 @@ function App() {
     }
   };
   
+  if (!isFirebaseConfigValid) {
+    return (
+        <div className="bg-neutral-100 text-neutral-800 min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 text-center">
+            <InformationCircleIcon className="w-16 h-16 text-red-500 mb-4" />
+            <h1 className="text-2xl sm:text-4xl font-bold text-red-400 mb-4">Errore di Configurazione</h1>
+            <p className="text-base sm:text-lg mb-6 text-neutral-400 max-w-2xl">
+                L'applicazione non può avviarsi perché le credenziali di Firebase non sono state trovate.
+            </p>
+            <div className="bg-neutral-50 p-4 sm:p-6 rounded-lg shadow-lg text-left max-w-3xl w-full border border-neutral-200">
+                <h2 className="text-xl font-semibold mb-3 text-neutral-800">Azione Richiesta</h2>
+                <p className="mb-4 text-neutral-600 text-sm sm:text-base">
+                    Per risolvere, crea un file chiamato <code className="bg-neutral-200/50 text-primary font-mono py-1 px-2 rounded">.env.local</code> nella cartella principale del progetto (la stessa dove si trova `package.json`) e inserisci le tue chiavi Firebase.
+                </p>
+                <pre className="bg-neutral-100 p-4 rounded-md text-xs sm:text-sm overflow-x-auto">
+                    <code className="text-neutral-600">
+                        VITE_FIREBASE_API_KEY="AIza..."<br />
+                        VITE_FIREBASE_AUTH_DOMAIN="tuo-progetto.firebaseapp.com"<br />
+                        VITE_FIREBASE_DATABASE_URL="https://tuo-progetto.firebaseio.com"<br />
+                        VITE_FIREBASE_PROJECT_ID="tuo-progetto"<br />
+                        VITE_FIREBASE_STORAGE_BUCKET="tuo-progetto.appspot.com"<br />
+                        VITE_FIREBASE_MESSAGING_SENDER_ID="1234567890"<br />
+                        VITE_FIREBASE_APP_ID="1:1234567890:web:..."
+                    </code>
+                </pre>
+                <p className="mt-4 text-sm text-neutral-400">
+                    Puoi trovare queste chiavi nelle impostazioni del tuo progetto Firebase. Dopo aver creato e salvato il file, ricarica questa pagina.
+                </p>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
