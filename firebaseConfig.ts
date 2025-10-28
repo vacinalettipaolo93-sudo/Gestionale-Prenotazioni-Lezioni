@@ -33,6 +33,7 @@ const checkGoogleAuthStatus = functions.httpsCallable('checkGoogleAuthStatus', {
 const getGoogleCalendarList = functions.httpsCallable('getGoogleCalendarList', { timeout: 60000 }); // 60s
 const getGoogleCalendarAvailability = functions.httpsCallable('getGoogleCalendarAvailability', { timeout: 60000 }); // 60s
 const createGoogleCalendarEvent = functions.httpsCallable('createGoogleCalendarEvent', { timeout: 60000 }); // 60s
+const getServiceAccountEmail = functions.httpsCallable('getServiceAccountEmail');
 
 
 export { 
@@ -43,4 +44,5 @@ export {
     getGoogleCalendarList,
     getGoogleCalendarAvailability,
     createGoogleCalendarEvent,
+    getServiceAccountEmail,
 };

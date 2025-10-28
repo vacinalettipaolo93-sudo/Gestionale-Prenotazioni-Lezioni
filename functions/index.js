@@ -1,4 +1,4 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/h");
 const admin = require("firebase-admin");
 const { google } = require("googleapis");
 const path = require("path");
@@ -66,6 +66,25 @@ const handleApiError = (error, functionName) => {
 };
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
+
+exports.getServiceAccountEmail = onCall(async (request) => {
+    const credentialsPath = path.resolve(__dirname, "./credentials.json");
+    if (!fs.existsSync(credentialsPath)) {
+        throw new HttpsError("not-found", "File credentials.json non trovato.");
+    }
+    try {
+        const credentialsContent = fs.readFileSync(credentialsPath);
+        const credentials = JSON.parse(credentialsContent);
+        if (!credentials.client_email) {
+            throw new HttpsError("internal", "Il campo client_email non è presente nel file credentials.json.");
+        }
+        return { email: credentials.client_email };
+    } catch (error) {
+        console.error("Errore durante la lettura di credentials.json:", error);
+        throw new HttpsError("internal", "Impossibile leggere o analizzare il file credentials.json.");
+    }
+});
+
 
 exports.checkGoogleAuthStatus = onCall({ timeoutSeconds: 120 }, async (request) => {
     const credentialsPath = path.resolve(__dirname, "./credentials.json");

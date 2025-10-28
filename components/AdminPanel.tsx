@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon } from './icons';
-import { getGoogleCalendarList } from '../firebaseConfig';
+import { getGoogleCalendarList, getServiceAccountEmail } from '../firebaseConfig';
 
 interface GoogleCalendar {
     id: string;
@@ -71,6 +71,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
+    const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
 
     const writableCalendars = useMemo(() => {
         return allGoogleCalendars.filter(cal => cal.accessRole === 'writer' || cal.accessRole === 'owner');
@@ -87,41 +89,56 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
+    const fetchCalendars = useCallback(async () => {
+        if (!isBackendConfigured) return;
+
+        setIsLoadingCalendars(true);
+        setCalendarError(null);
+        try {
+            const result = await getGoogleCalendarList();
+            const data = result.data as { calendars: GoogleCalendar[] };
+            setAllGoogleCalendars(data.calendars || []);
+        } catch (error: any) {
+             console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error);
+            let detailedMessage = "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
+
+            if (error.code === 'deadline-exceeded') {
+                detailedMessage = "Il server ha impiegato troppo tempo per rispondere (timeout). La causa più comune è un problema di configurazione della fatturazione su Google Cloud o un numero molto elevato di calendari. Prova a ricaricare la pagina.";
+            } else if (error.details?.serverMessage) {
+                detailedMessage = `Errore dal server: ${error.details.serverMessage}`;
+            } else if (error.message) {
+                detailedMessage = error.message;
+            }
+
+            setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della console per maggiori dettagli tecnici.`);
+        } finally {
+            setIsLoadingCalendars(false);
+        }
+    }, [isBackendConfigured]);
+
     // Fetch Google Calendars when backend is configured
     useEffect(() => {
-        const fetchCalendars = async () => {
+        const fetchInitialData = async () => {
              if (isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours')) {
-                if (allGoogleCalendars.length > 0) return; // Fetch only once
-                
-                setIsLoadingCalendars(true);
-                setCalendarError(null);
-                try {
-                    const result = await getGoogleCalendarList();
-                    const data = result.data as { calendars: GoogleCalendar[] };
-                    setAllGoogleCalendars(data.calendars || []);
-                } catch (error: any) {
-                    console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error);
-                    console.dir(error); // Log the full object for inspection
-                    
-                    let detailedMessage = "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
-
-                    if (error.code === 'deadline-exceeded') {
-                        detailedMessage = "Il server ha impiegato troppo tempo per rispondere (timeout). La causa più comune è un problema di configurazione della fatturazione su Google Cloud o un numero molto elevato di calendari. Prova a ricaricare la pagina.";
-                    } else if (error.details?.serverMessage) {
-                        detailedMessage = `Errore dal server: ${error.details.serverMessage}`;
-                    } else if (error.message) {
-                        detailedMessage = error.message;
+                // Fetch email
+                if (!serviceAccountEmail) {
+                    try {
+                        const result = await getServiceAccountEmail();
+                        const data = result.data as { email: string };
+                        setServiceAccountEmail(data.email);
+                    } catch (error) {
+                        console.error("Failed to fetch service account email:", error);
                     }
-
-                    setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della console per maggiori dettagli tecnici.`);
-                } finally {
-                    setIsLoadingCalendars(false);
+                }
+                
+                if (allGoogleCalendars.length === 0) {
+                    fetchCalendars();
                 }
             }
         };
 
-        fetchCalendars();
-    }, [isBackendConfigured, activeTab]);
+        fetchInitialData();
+    }, [isBackendConfigured, activeTab, serviceAccountEmail, allGoogleCalendars.length, fetchCalendars]);
 
 
     // --- State Update Handlers ---
@@ -346,6 +363,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 return [...prev, calendarId];
             }
         });
+    };
+
+    const handleCopyToClipboard = () => {
+        if (serviceAccountEmail) {
+            navigator.clipboard.writeText(serviceAccountEmail).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+            });
+        }
     };
 
     const renderProfileTab = () => (
@@ -740,8 +766,56 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     
     const renderIntegrationsTab = () => {
-        // The main error banner `renderAuthError` already covers the !isBackendConfigured case.
-        // This tab can now focus on showing the tools available when configured.
+        const renderNoCalendarsFound = () => (
+            <div className="p-6 bg-neutral-100 border border-neutral-200 rounded-lg text-sm">
+                <p className="font-semibold text-xl text-neutral-800 mb-4">Nessun calendario trovato o accessibile</p>
+                <p className="text-neutral-400 mb-6">Questo è normale se non hai ancora condiviso i tuoi calendari. Segui questi passaggi per risolvere:</p>
+                
+                <ol className="space-y-4 list-decimal list-inside text-neutral-600">
+                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
+                        <span className="font-bold">Copia l'email del Service Account</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-2">Questo è l'indirizzo "robot" che accederà ai tuoi calendari.</p>
+                        {serviceAccountEmail ? (
+                            <div className="flex items-center gap-2 p-2 bg-neutral-100 rounded">
+                                <code className="text-primary font-mono flex-grow break-all text-xs">{serviceAccountEmail}</code>
+                                <button onClick={handleCopyToClipboard} className="bg-primary text-white px-3 py-1 text-xs font-semibold rounded hover:bg-primary-dark transition-colors flex-shrink-0">
+                                    {copied ? 'Copiato!' : 'Copia'}
+                                </button>
+                            </div>
+                        ) : (
+                            <p className="text-neutral-400 text-xs">Caricamento email in corso...</p>
+                        )}
+                    </li>
+
+                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
+                        <span className="font-bold">Apri Google Calendar e condividi</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-3">Vai alle impostazioni del calendario che vuoi usare, cerca la sezione "Condividi con persone..." e incolla l'email.</p>
+                        <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="inline-block bg-blue-500 text-white px-4 py-2 text-sm font-semibold rounded hover:bg-blue-600 transition-colors">
+                            Apri Impostazioni Google Calendar
+                        </a>
+                    </li>
+
+                    <li className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-800">
+                        <span className="font-bold">Imposta i permessi corretti (Importante!)</span>
+                        <p className="text-xs mt-1">Quando condividi, assicurati di selezionare l'opzione <strong className="font-bold">"Apportare modifiche agli eventi"</strong> dal menu a tendina. Senza questo permesso, l'applicazione non potrà creare le prenotazioni.</p>
+                    </li>
+                    
+                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
+                        <span className="font-bold">Verifica di nuovo</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-3">Dopo aver condiviso, torna qui e clicca il pulsante qui sotto per ricaricare la lista dei calendari.</p>
+                        <button 
+                                onClick={fetchCalendars}
+                                className="text-sm text-white bg-primary hover:bg-primary-dark py-2 px-4 rounded transition-colors disabled:bg-neutral-400"
+                                disabled={isLoadingCalendars}
+                            >
+                                {isLoadingCalendars ? 'Caricamento...' : 'Ricarica Calendari'}
+                        </button>
+                    </li>
+                </ol>
+            </div>
+        );
+
+
         if (!isBackendConfigured) {
              return (
                 <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
@@ -796,13 +870,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             ))}
                         </div>
                     ) : (
-                        <p className="text-neutral-400 p-4 bg-neutral-100 border border-neutral-200 rounded-md">Nessun calendario trovato o accessibile. Assicurati di aver condiviso i calendari con l'email del service account.</p>
+                        renderNoCalendarsFound()
                     )}
                     
                     <div className="mt-6 text-right">
                         <button 
                             onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
-                            disabled={isLoadingCalendars}
+                            disabled={isLoadingCalendars || allGoogleCalendars.length === 0}
                             className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-neutral-400"
                         >
                             Salva Calendari Selezionati
