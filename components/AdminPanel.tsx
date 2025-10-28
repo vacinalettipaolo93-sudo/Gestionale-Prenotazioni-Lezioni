@@ -89,6 +89,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
+    const [calendarsFetched, setCalendarsFetched] = useState(false);
+
 
     const isBackendConfigured = !!localStorage.getItem('google_access_token');
 
@@ -119,8 +121,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         setCalendarError(null);
         try {
             const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
-            const data = result.data as { calendars: GoogleCalendar[] };
-            setAllGoogleCalendars(data.calendars || []);
+            const data = result?.data as { calendars?: GoogleCalendar[] };
+            setAllGoogleCalendars(data?.calendars || []);
         } catch (error: any) {
             console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
             const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
@@ -132,6 +134,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             }
         } finally {
             setIsLoadingCalendars(false);
+            setCalendarsFetched(true);
         }
     }, [showToast]);
 
@@ -139,11 +142,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         if(isAdmin) {
             const shouldFetch = (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
             const googleAccessToken = localStorage.getItem('google_access_token');
-            if (shouldFetch && googleAccessToken && allGoogleCalendars.length === 0) {
+            if (shouldFetch && googleAccessToken && !calendarsFetched) {
                 fetchCalendars();
             }
         }
-    }, [isAdmin, activeTab, fetchCalendars, allGoogleCalendars.length]);
+    }, [isAdmin, activeTab, fetchCalendars, calendarsFetched]);
 
 
     // --- Google Auth Handlers using Firebase Authentication ---
@@ -201,6 +204,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             await signOut(auth);
             localStorage.removeItem('google_access_token');
             setAllGoogleCalendars([]);
+            setCalendarsFetched(false);
             onGoogleLogout();
             showToast('Logout effettuato.', 'success');
         } catch (error: any) {

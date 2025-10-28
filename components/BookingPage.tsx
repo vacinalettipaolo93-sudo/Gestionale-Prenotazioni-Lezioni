@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverrides } from '../types';
 import { generateAvailableTimes, CalendarEvent } from '../utils/date';
@@ -83,8 +84,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
                 calendarIds: selectedCalendarIds,
                 googleAuthToken: adminGoogleToken,
               });
-              const data = result.data as { busy: { start: string, end: string }[] };
-              if (data.busy) {
+              const data = result?.data as { busy?: { start: string, end: string }[] };
+              if (data?.busy) {
                 calendarEvents = data.busy.map(slot => ({
                   startTime: new Date(slot.start),
                   endTime: new Date(slot.end)
