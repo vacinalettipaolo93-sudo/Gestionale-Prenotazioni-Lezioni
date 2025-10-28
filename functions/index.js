@@ -1,11 +1,11 @@
-
-const functions = require("firebase-functions");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { google } = require("googleapis");
 const path = require("path");
 const fs = require("fs");
-const util = require("util"); // For better object logging
+const util = require("util");
 
+// In CommonJS, __dirname è disponibile a livello globale, quindi non c'è bisogno della logica di import.meta.url.
 admin.initializeApp();
 
 // --- CONFIGURAZIONE CON SERVICE ACCOUNT ---
@@ -55,12 +55,12 @@ const handleApiError = (error, functionName) => {
         statusCode = `(Status: ${error.response.status}) `;
     }
 
-    // Attempt to extract the most specific message from Google API error formats
+    // Tenta di estrarre il messaggio più specifico dai formati di errore dell'API di Google
     if (error.response?.data?.error?.message) {
-        // Gaxios error structure (most common)
+        // Struttura di errore Gaxios (più comune)
         serverMessage = error.response.data.error.message;
     } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0 && error.errors[0].message) {
-        // Alternative Google API error structure: { errors: [ { message: '...' } ] }
+        // Struttura di errore alternativa dell'API di Google: { errors: [ { message: '...' } ] }
         serverMessage = error.errors.map((e) => e.message).join("; ");
     } else if (error instanceof Error) {
         serverMessage = error.message;
@@ -70,19 +70,17 @@ const handleApiError = (error, functionName) => {
         try {
             serverMessage = JSON.stringify(error);
         } catch (e) {
-            // Fallback is already set
+            // Il fallback è già impostato
         }
     }
     
     const finalMessage = `${statusCode}${serverMessage}`;
-    throw new functions.https.HttpsError('internal', finalMessage, { serverMessage: finalMessage });
+    throw new HttpsError('internal', finalMessage, { serverMessage: finalMessage });
 };
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
 
-exports.checkGoogleAuthStatus = functions
-    .runWith({ timeoutSeconds: 120 })
-    .https.onCall(async (data, context) => {
+exports.checkGoogleAuthStatus = onCall({ timeoutSeconds: 120 }, async (request) => {
     const credentialsPath = path.resolve(__dirname, "./credentials.json");
     if (!fs.existsSync(credentialsPath)) {
         return { isConfigured: false };
@@ -101,9 +99,7 @@ exports.checkGoogleAuthStatus = functions
 });
 
 
-exports.getGoogleCalendarList = functions
-    .runWith({ timeoutSeconds: 120 })
-    .https.onCall(async (data, context) => {
+exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) => {
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
@@ -111,12 +107,12 @@ exports.getGoogleCalendarList = functions
         let allCalendars = [];
         let pageToken = null;
         
-        // Loop to handle pagination and fetch all available calendars.
+        // Loop per gestire la paginazione e recuperare tutti i calendari disponibili.
         do {
             const res = await calendar.calendarList.list({
-                maxResults: 250, // Max allowed per page
+                maxResults: 250, // Massimo consentito per pagina
                 pageToken: pageToken,
-                // Request only the fields we need to reduce payload size
+                // Richiedi solo i campi necessari per ridurre la dimensione del payload
                 fields: 'items(id,summary,accessRole),nextPageToken',
             });
 
@@ -132,13 +128,11 @@ exports.getGoogleCalendarList = functions
     }
 });
 
-exports.getGoogleCalendarAvailability = functions
-    .runWith({ timeoutSeconds: 120 })
-    .https.onCall(async (data, context) => {
-    const { timeMin, timeMax, calendarIds } = data;
+exports.getGoogleCalendarAvailability = onCall({ timeoutSeconds: 120 }, async (request) => {
+    const { timeMin, timeMax, calendarIds } = request.data;
     
     if (!timeMin || !timeMax || !calendarIds) {
-        throw new functions.https.HttpsError('invalid-argument', 'Parametri timeMin, timeMax e calendarIds richiesti.');
+        throw new HttpsError('invalid-argument', 'Parametri timeMin, timeMax e calendarIds richiesti.');
     }
     
     try {
@@ -168,12 +162,10 @@ exports.getGoogleCalendarAvailability = functions
     }
 });
 
-exports.createGoogleCalendarEvent = functions
-    .runWith({ timeoutSeconds: 120 })
-    .https.onCall(async (data, context) => {
-    const { event, calendarId, sendUpdates } = data;
+exports.createGoogleCalendarEvent = onCall({ timeoutSeconds: 120 }, async (request) => {
+    const { event, calendarId, sendUpdates } = request.data;
     if (!event || !calendarId) {
-        throw new functions.https.HttpsError("invalid-argument", "L'oggetto 'event' e 'calendarId' sono richiesti.");
+        throw new HttpsError("invalid-argument", "L'oggetto 'event' e 'calendarId' sono richiesti.");
     }
     
     try {

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverrides } from '../types';
 import { generateAvailableTimes, CalendarEvent } from '../utils/date';
@@ -16,11 +17,12 @@ interface BookingPageProps {
   minimumNoticeHours: number;
   consultant: ConsultantInfo;
   selectedCalendarIds: string[];
+  showToast: (message: string, type: 'success' | 'error') => void;
 }
 
 const BookingPage: React.FC<BookingPageProps> = ({ 
     selection, onBookingConfirmed, onBack, workingHours, 
-    dateOverrides, slotInterval, minimumNoticeHours, consultant, selectedCalendarIds
+    dateOverrides, slotInterval, minimumNoticeHours, consultant, selectedCalendarIds, showToast
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -257,7 +259,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
         }
         
         const errorMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore durante la prenotazione. Riprova.";
-        alert(`Errore: ${errorMessage}`);
+        showToast(`Errore: ${errorMessage}`, 'error');
     } finally {
         setIsSubmitting(false);
     }

@@ -6,10 +6,11 @@ import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
 import LoginModal from './components/LoginModal';
 import BackgroundIcon from './components/BackgroundIcon';
+import Toast from './components/Toast';
 import { CogIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { db, checkGoogleAuthStatus } from './firebaseConfig';
+import { db, checkGoogleAuthStatus, auth } from './firebaseConfig';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
@@ -33,6 +34,14 @@ function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // UI State
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000); // Nascondi dopo 5 secondi
+  };
   
 
   // --- FIREBASE REALTIME DATA ---
@@ -65,18 +74,26 @@ function App() {
           console.log("Successfully initialized configuration in Firestore.");
         } catch (error) {
           console.error("Error initializing Firestore configuration:", error);
-          alert("Errore critico: impossibile inizializzare la configurazione dell'app.");
+          showToast("Errore critico: impossibile inizializzare la configurazione dell'app.", 'error');
         }
       }
       if(isLoadingConfig) setIsLoadingConfig(false);
     }, (error) => {
       console.error("Error fetching Firestore configuration:", error);
-      alert("Impossibile caricare la configurazione dell'applicazione. Controlla la connessione e la configurazione di Firebase.");
+      showToast("Impossibile caricare la configurazione dell'applicazione. Controlla la connessione e la configurazione di Firebase.", 'error');
       setIsLoadingConfig(false);
     });
 
     return () => unsubscribe();
   }, [isLoadingConfig]);
+
+  // --- FIREBASE AUTH STATE ---
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+        setIsAdminLoggedIn(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // --- GOOGLE AUTH VIA FIREBASE FUNCTIONS ---
   const checkAuth = useCallback(async () => {
@@ -140,81 +157,88 @@ function App() {
   
   // --- ADMIN HANDLERS ---
   const handleAdminLoginSuccess = () => {
-    setIsAdminLoggedIn(true);
     setIsLoginModalOpen(false);
+    showToast('Login effettuato con successo!', 'success');
   }
   
-  const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
+  const handleAdminLogout = async () => {
+    try {
+      await auth.signOut();
+      setIsAdminLoggedIn(false);
+      showToast('Logout effettuato.', 'success');
+    } catch (error) {
+      console.error("Error signing out: ", error);
+      showToast('Errore durante il logout.', 'error');
+    }
   }
 
   const handleSaveWorkingHours = async (newHours: WorkingHours) => {
     try {
       await db.collection('configuration').doc('main').update({ workingHours: newHours });
-      alert('Orari di lavoro aggiornati!');
+      showToast('Orari di lavoro aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving working hours:", error);
-      alert("Errore nel salvataggio degli orari.");
+      showToast("Errore nel salvataggio degli orari.", 'error');
     }
   }
   
   const handleSaveDateOverrides = async (newOverrides: DateOverrides) => {
     try {
       await db.collection('configuration').doc('main').update({ dateOverrides: newOverrides });
-      alert('Eccezioni del calendario aggiornate!');
+      showToast('Eccezioni del calendario aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving date overrides:", error);
-      alert("Errore nel salvataggio delle eccezioni.");
+      showToast("Errore nel salvataggio delle eccezioni.", 'error');
     }
   }
   
   const handleSaveSportsData = async (newSportsData: Sport[]) => {
     try {
       await db.collection('configuration').doc('main').update({ sportsData: newSportsData });
-      alert('Dati di sport, lezioni e sedi aggiornati!');
+      showToast('Dati di sport, lezioni e sedi aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving sports data:", error);
-      alert("Errore nel salvataggio dei dati sport.");
+      showToast("Errore nel salvataggio dei dati sport.", 'error');
     }
   }
   
   const handleSaveConsultantInfo = async (newInfo: ConsultantInfo) => {
     try {
       await db.collection('configuration').doc('main').update({ consultantInfo: newInfo });
-      alert('Informazioni del profilo aggiornate!');
+      showToast('Informazioni del profilo aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving consultant info:", error);
-      alert("Errore nel salvataggio del profilo.");
+      showToast("Errore nel salvataggio del profilo.", 'error');
     }
   }
 
   const handleSaveSlotInterval = async (newInterval: number) => {
     try {
       await db.collection('configuration').doc('main').update({ slotInterval: newInterval });
-      alert('Intervallo di prenotazione aggiornato!');
+      showToast('Intervallo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving slot interval:", error);
-      alert("Errore nel salvataggio dell'intervallo.");
+      showToast("Errore nel salvataggio dell'intervallo.", 'error');
     }
   }
 
   const handleSaveMinimumNoticeHours = async (newNotice: number) => {
     try {
       await db.collection('configuration').doc('main').update({ minimumNoticeHours: newNotice });
-      alert('Preavviso minimo di prenotazione aggiornato!');
+      showToast('Preavviso minimo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving minimum notice:", error);
-      alert("Errore nel salvataggio del preavviso minimo.");
+      showToast("Errore nel salvataggio del preavviso minimo.", 'error');
     }
   }
 
   const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
     try {
       await db.collection('configuration').doc('main').update({ googleCalendarIds: calendarIds });
-      alert('Calendari per la sincronizzazione aggiornati!');
+      showToast('Calendari per la sincronizzazione aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving selected calendars:", error);
-      alert("Errore nel salvataggio dei calendari selezionati.");
+      showToast("Errore nel salvataggio dei calendari selezionati.", 'error');
     }
   };
   
@@ -271,6 +295,7 @@ function App() {
             minimumNoticeHours={minimumNoticeHours}
             consultant={consultantInfo}
             selectedCalendarIds={selectedCalendarIds}
+            showToast={showToast}
         />;
       case 'confirmation':
          if (!confirmedBooking || !lessonSelection) {
@@ -285,6 +310,7 @@ function App() {
   
   return (
     <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {backgroundSport && <BackgroundIcon sport={backgroundSport} />}
       <header className="bg-neutral-50 border-b border-neutral-200 relative z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">

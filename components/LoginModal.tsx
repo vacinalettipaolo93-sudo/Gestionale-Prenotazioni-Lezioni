@@ -1,5 +1,7 @@
+
 import React, { useState } from 'react';
 import { XIcon } from './icons';
+import { auth } from '../firebaseConfig';
 
 interface LoginModalProps {
     onClose: () => void;
@@ -7,18 +9,36 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setIsLoading(true);
 
-        if (username === 'vacio93' && password === '1234Paolo') {
+        try {
+            await auth.signInWithEmailAndPassword(email, password);
             onLoginSuccess();
-        } else {
-            setError('Username o password non validi.');
+        } catch (error: any) {
+            console.error("Login failed:", error);
+            switch (error.code) {
+                case 'auth/user-not-found':
+                case 'auth/wrong-password':
+                case 'auth/invalid-credential':
+                     setError('Email o password non validi.');
+                    break;
+                case 'auth/invalid-email':
+                    setError('Formato email non valido.');
+                    break;
+                default:
+                    setError('Si è verificato un errore durante il login.');
+                    break;
+            }
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -39,14 +59,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 <h2 className="text-2xl font-bold text-center text-neutral-800 mb-6">Accesso Amministratore</h2>
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
-                        <label className="block text-neutral-400 text-sm font-bold mb-2" htmlFor="username">
-                            Username
+                        <label className="block text-neutral-400 text-sm font-bold mb-2" htmlFor="email">
+                            Email
                         </label>
                         <input
-                            id="username"
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            id="email"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             className="shadow-inner appearance-none bg-neutral-100 border border-neutral-200 rounded w-full py-2 px-3 text-neutral-800 leading-tight focus:outline-none focus:shadow-outline focus:border-primary"
                             required
                         />
@@ -72,9 +92,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                     <div className="flex items-center justify-center">
                         <button
                             type="submit"
-                            className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors"
+                            disabled={isLoading}
+                            className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors disabled:bg-neutral-400 flex items-center justify-center"
                         >
-                            Accedi
+                             {isLoading && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>}
+                             {isLoading ? 'Accesso...' : 'Accedi'}
                         </button>
                     </div>
                 </form>

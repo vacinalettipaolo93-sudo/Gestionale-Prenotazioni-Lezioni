@@ -1,9 +1,10 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'url';
 
+// Fix: Removed the import for 'process'. The Node.js global 'process' object is
+// available in this context and provides the correct type definitions.
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
     return {
       server: {
         port: 3000,
@@ -11,12 +12,10 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env': {}, // Polyfill per compatibilità
       },
       resolve: {
         alias: {
-          // FIX: __dirname is not available in ES modules. Using import.meta.url is the modern replacement.
           '@': fileURLToPath(new URL('.', import.meta.url))
         }
       }
