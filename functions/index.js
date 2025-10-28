@@ -1,4 +1,4 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/onCall");
 const admin = require("firebase-admin");
 const {google} = require("googleapis");
 
@@ -85,13 +85,30 @@ exports.checkGoogleAuthStatus = onCall(async (request) => {
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
-        // A simple API call to test the connection and permissions.
-        await calendar.calendarList.list({ maxResults: 1 });
-        return { isConfigured: true };
+        // We need to check if there is at least one calendar with writer/owner access.
+        const res = await calendar.calendarList.list({
+            maxResults: 250,
+            fields: 'items(accessRole)', // Only need accessRole
+        });
+
+        const calendars = res.data?.items || [];
+        const hasWriterAccess = calendars.some(
+            (cal) => cal.accessRole === 'writer' || cal.accessRole === 'owner'
+        );
+        
+        // If there's at least one calendar with write access, we are configured.
+        if (hasWriterAccess) {
+            return { isConfigured: true };
+        } else {
+            // The API call succeeded but no writable calendars were found.
+            // This is NOT a configured state for this app's purpose.
+            return { 
+                isConfigured: false, 
+                error: 'Nessun calendario con permessi di scrittura trovato. Condividi un calendario con l\'email del Service Account e imposta i permessi su "Apportare modifiche agli eventi".' 
+            };
+        }
     } catch (error) {
         console.error("Google Auth status check failed:", error);
-        // This function is called by unauthenticated users to check if setup is needed.
-        // It's better to return a status than to throw an error that shows up in the user's console.
         return { isConfigured: false, error: error.message };
     }
 });
