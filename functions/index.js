@@ -85,32 +85,48 @@ exports.checkGoogleAuthStatus = onCall(async (request) => {
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
-        // We need to check if there is at least one calendar with writer/owner access.
+        
         const res = await calendar.calendarList.list({
             maxResults: 250,
-            fields: 'items(accessRole)', // Only need accessRole
+            // Request more fields for better error reporting
+            fields: 'items(summary,accessRole)', 
         });
 
         const calendars = res.data?.items || [];
+
+        // Log for debugging
+        console.log(`Found ${calendars.length} calendars for the service account.`);
+        calendars.forEach(cal => {
+            console.log(`- ${cal.summary} (Access: ${cal.accessRole})`);
+        });
+
         const hasWriterAccess = calendars.some(
             (cal) => cal.accessRole === 'writer' || cal.accessRole === 'owner'
         );
         
-        // If there's at least one calendar with write access, we are configured.
         if (hasWriterAccess) {
             return { isConfigured: true };
-        } else {
-            // The API call succeeded but no writable calendars were found.
-            // This is NOT a configured state for this app's purpose.
+        } 
+        
+        // If we're here, no writable calendars were found. Let's build a better error message.
+        if (calendars.length === 0) {
             return { 
                 isConfigured: false, 
-                error: 'Nessun calendario con permessi di scrittura trovato. Condividi un calendario con l\'email del Service Account e imposta i permessi su "Apportare modifiche agli eventi".' 
+                error: 'Nessun calendario trovato. Assicurati di aver condiviso almeno un calendario con l\'email del Service Account e attendi qualche minuto per la propagazione dei permessi.' 
+            };
+        } else {
+            const detectedCalendarsString = calendars
+                .map(c => `"${c.summary}" (Permesso: ${c.accessRole})`)
+                .join(', ');
+            return { 
+                isConfigured: false, 
+                error: `Sono stati trovati dei calendari, ma nessuno con i permessi di scrittura. Calendari rilevati: [${detectedCalendarsString}]. Assicurati che per almeno uno sia impostato "Apportare modifiche agli eventi".`
             };
         }
+
     } catch (error) {
         console.error("Google Auth status check failed:", error);
         
-        // Extract a more detailed error message, similar to handleApiError
         let specificMessage = error.message || "An unexpected error occurred during auth status check.";
         if (error.response?.data?.error?.message) {
             specificMessage = error.response.data.error.message;
@@ -118,7 +134,6 @@ exports.checkGoogleAuthStatus = onCall(async (request) => {
             specificMessage = error.errors.map((e) => e.message).join('; ');
         }
         
-        // Add context for common issues
         if (specificMessage.includes("API has not been used") || specificMessage.includes("is disabled")) {
             specificMessage = "L'API di Google Calendar non è abilitata per questo progetto Google Cloud. Segui il link nella guida per abilitarla. Dettagli: " + specificMessage;
         }
