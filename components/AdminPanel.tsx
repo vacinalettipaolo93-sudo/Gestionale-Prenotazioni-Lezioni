@@ -129,18 +129,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         const gapiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
         const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
 
-        // Check if GAPI is already loaded
-        if (window.gapi?.client) {
-            setIsGapiLoaded(true);
+        // Handle GAPI script
+        if (window.gapi && window.gapi.load) {
+            handleGapiLoad();
         } else if (gapiScript) {
             gapiScript.addEventListener('load', handleGapiLoad);
         } else {
             console.error('GAPI script tag not found.');
         }
 
-        // Check if GIS is already loaded
-        if (window.google?.accounts?.oauth2) {
-            setIsGisLoaded(true);
+        // Handle GIS script
+        if (window.google && window.google.accounts) {
+            handleGisLoad();
         } else if (gisScript) {
             gisScript.addEventListener('load', handleGisLoad);
         } else {
