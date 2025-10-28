@@ -172,10 +172,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             }
         } catch (error: any) {
             console.error("Errore durante l'accesso con Google:", error);
+            let message = `Errore di accesso: ${error.message}`;
+            
+            // Provide more specific, helpful error messages
             if (error.code === 'auth/popup-closed-by-user') {
-                showToast('La finestra di accesso è stata chiusa.', 'error');
-            } else if (error.code !== 'auth/cancelled-popup-request') {
-                showToast(`Errore di accesso: ${error.message}`, 'error');
+                message = 'La finestra di accesso è stata chiusa prima del completamento.';
+            } else if (error.code === 'auth/unauthorized-domain') {
+                message = "Dominio non autorizzato. L'amministratore deve aggiungere questo URL alla lista dei domini autorizzati nelle impostazioni di Firebase Authentication.";
+            } else if (error.code === 'auth/popup-blocked') {
+                message = 'La finestra di popup è stata bloccata dal browser. Abilita i popup per questo sito e riprova.';
+            }
+        
+            // Avoid showing a toast for a cancelled request which can happen if the user clicks the button multiple times quickly.
+            if (error.code !== 'auth/cancelled-popup-request') {
+                showToast(message, 'error');
             }
         }
     };
