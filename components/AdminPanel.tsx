@@ -81,6 +81,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [newOverrideStart, setNewOverrideStart] = useState('09:00');
     const [newOverrideEnd, setNewOverrideEnd] = useState('17:00');
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
+    
+    // --- State for Login Feedback ---
+    const [loginError, setLoginError] = useState<string | null>(null);
 
     // --- State for Google Calendar Integration ---
     const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
@@ -145,8 +148,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     // --- Google Auth Handlers using Firebase Authentication ---
     const handleGoogleConnect = async () => {
+        setLoginError(null); // Reset error on new attempt
         if (!auth) {
-            showToast('Firebase Auth non è inizializzato.', 'error');
+            const errorMsg = 'Errore critico: Firebase Auth non è inizializzato.';
+            setLoginError(errorMsg);
+            showToast(errorMsg, 'error');
             return;
         }
         const provider = new GoogleAuthProvider();
@@ -171,19 +177,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             }
         } catch (error: any) {
             console.error("Errore durante l'accesso con Google:", error);
-            let message = `Errore di accesso: ${error.message}`;
+            let message = `Errore di accesso: ${error.message} (codice: ${error.code})`;
             
-            if (error.code === 'auth/popup-closed-by-user') {
-                message = 'La finestra di accesso è stata chiusa prima del completamento.';
+            if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+                // Don't show an error if the user intentionally closes the popup.
+                return;
             } else if (error.code === 'auth/unauthorized-domain') {
-                message = "Dominio non autorizzato. L'amministratore deve aggiungere questo URL alla lista dei domini autorizzati nelle impostazioni di Firebase Authentication.";
+                message = "Questo dominio non è autorizzato per l'accesso. Vai alla console Firebase > Authentication > Sign-in method > Google e aggiungi questo dominio alla lista di quelli autorizzati.";
             } else if (error.code === 'auth/popup-blocked') {
                 message = 'La finestra di popup è stata bloccata dal browser. Abilita i popup per questo sito e riprova.';
+            } else if (error.code === 'auth/operation-not-allowed') {
+                message = "L'accesso con Google non è abilitato per questo progetto. Abilitalo nella console Firebase > Authentication > Sign-in method.";
             }
         
-            if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
-                showToast(message, 'error');
-            }
+            setLoginError(message);
+            showToast(message, 'error'); // Keep toast as secondary notification
         }
     };
 
@@ -992,6 +1000,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
                         Accedi con Google
                     </button>
+                    {loginError && (
+                        <div className="mt-6 p-4 bg-red-900/10 border border-red-400/30 text-red-500 rounded-md text-sm max-w-md text-left">
+                            <p className="font-bold mb-2">Impossibile accedere</p>
+                            <p>{loginError}</p>
+                        </div>
+                    )}
                     <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
                     <strong>Nota:</strong> Se l'app è in modalità test nel tuo progetto Google Cloud, assicurati che il tuo account sia aggiunto agli utenti di test per poter accedere.
                     </div>
