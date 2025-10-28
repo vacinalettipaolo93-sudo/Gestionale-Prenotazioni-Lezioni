@@ -40,41 +40,27 @@ const getAuthenticatedClient = async () => {
 };
 
 const handleApiError = (error, functionName) => {
+    // Log the full error for server-side debugging, which is crucial.
     console.error(`Errore dettagliato in ${functionName}:`, util.inspect(error, {depth: 5}));
 
-    if (error.code && error.httpErrorCode) {
-        throw error;
-    }
-
-    let serverMessage = `Si è verificato un errore in ${functionName}.`;
-    let statusCode = '';
-
-    if (error.code) {
-        statusCode = `(Codice: ${error.code}) `;
-    } else if (error.response?.status) {
-        statusCode = `(Status: ${error.response.status}) `;
-    }
-
-    // Tenta di estrarre il messaggio più specifico dai formati di errore dell'API di Google
+    // Attempt to extract the most specific error message from the Google API response.
+    let specificMessage = "Si è verificato un errore imprevisto sul server.";
     if (error.response?.data?.error?.message) {
-        // Struttura di errore Gaxios (più comune)
-        serverMessage = error.response.data.error.message;
-    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0 && error.errors[0].message) {
-        // Struttura di errore alternativa dell'API di Google: { errors: [ { message: '...' } ] }
-        serverMessage = error.errors.map((e) => e.message).join("; ");
-    } else if (error instanceof Error) {
-        serverMessage = error.message;
-    } else if (typeof error === 'string') {
-        serverMessage = error;
-    } else {
-        try {
-            serverMessage = JSON.stringify(error);
-        } catch (e) {
-            // Il fallback è già impostato
-        }
+        // Gaxios error structure
+        specificMessage = error.response.data.error.message;
+    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+        // Alternative Google API error structure
+        specificMessage = error.errors.map(e => e.message).join('; ');
+    } else if (error.message) {
+        // Fallback for standard Error objects or other types
+        specificMessage = error.message;
     }
     
-    const finalMessage = `${statusCode}${serverMessage}`;
+    // Add the HTTP status code if available, as it's very useful for debugging.
+    const statusCode = error.code || error.response?.status;
+    const finalMessage = statusCode ? `(Errore ${statusCode}) ${specificMessage}` : specificMessage;
+
+    // Throw an HttpsError. The client will receive this structured error.
     throw new HttpsError('internal', finalMessage, { serverMessage: finalMessage });
 };
 
