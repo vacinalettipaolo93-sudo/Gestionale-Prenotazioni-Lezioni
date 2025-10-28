@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, InformationCircleIcon } from './icons';
@@ -122,45 +121,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     // --- Google API Initialization ---
     useEffect(() => {
-        const handleGapiLoad = () => {
-            window.gapi.load('client', () => {
-                console.log("Google API client library loaded.");
-                setIsGapiLoaded(true);
-            });
-        };
+        // This effect uses a polling mechanism to robustly detect when the Google API scripts
+        // have loaded, avoiding race conditions that can occur with simple 'load' event listeners.
+        
+        let gapiInitialized = false;
+        let gisInitialized = false;
+        
+        const intervalId = setInterval(() => {
+            // Check for GAPI (for user info)
+            if (!gapiInitialized && window.gapi && window.gapi.load) {
+                window.gapi.load('client', () => {
+                    console.log("Google API client library initialized.");
+                    setIsGapiLoaded(true);
+                });
+                gapiInitialized = true;
+            }
 
-        const handleGisLoad = () => {
-            console.log("Google Identity Services library loaded.");
-            setIsGisLoaded(true);
-        };
+            // Check for GIS (for auth)
+            if (!gisInitialized && window.google && window.google.accounts) {
+                console.log("Google Identity Services library loaded.");
+                setIsGisLoaded(true);
+                gisInitialized = true;
+            }
 
-        const gapiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
-        const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+            // If both are loaded, stop polling
+            if (gapiInitialized && gisInitialized) {
+                clearInterval(intervalId);
+            }
+        }, 100);
 
-        // Handle GAPI script
-        if (window.gapi && window.gapi.load) {
-            handleGapiLoad();
-        } else if (gapiScript) {
-            gapiScript.addEventListener('load', handleGapiLoad);
-        } else {
-            console.error('GAPI script tag not found.');
-        }
+        // Set a timeout to prevent the interval from running indefinitely
+        const timeoutId = setTimeout(() => {
+            clearInterval(intervalId);
+            if (!gapiInitialized || !gisInitialized) {
+                console.error("Timeout: Google API scripts did not load within 10 seconds.");
+                showToast("Errore di caricamento dei servizi Google. Per favore, ricarica la pagina.", 'error');
+            }
+        }, 10000);
 
-        // Handle GIS script
-        if (window.google && window.google.accounts) {
-            handleGisLoad();
-        } else if (gisScript) {
-            gisScript.addEventListener('load', handleGisLoad);
-        } else {
-            console.error('GIS script tag not found.');
-        }
-
-        // Cleanup
+        // Cleanup function to clear interval and timeout when the component unmounts
         return () => {
-            if (gapiScript) gapiScript.removeEventListener('load', handleGapiLoad);
-            if (gisScript) gisScript.removeEventListener('load', handleGisLoad);
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
         };
-    }, []);
+    }, [showToast]); // Dependency on showToast as it's used in the effect
     
     useEffect(() => {
         if (isGapiLoaded && isGisLoaded && !googleTokenClient) {
