@@ -160,29 +160,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
                     scope: GOOGLE_API_SCOPES,
-                    callback: async (tokenResponse: any) => {
-                        if (tokenResponse && tokenResponse.access_token) {
+                    callback: (tokenResponse: any) => {
+                        if (tokenResponse.error) {
+                            console.error("Google Auth Error:", tokenResponse);
+                            let message = 'Errore durante l\'autenticazione con Google.';
+                            if (tokenResponse.error === 'access_denied') {
+                                message = 'Accesso negato. Se l\'app è in modalità test, assicurati che il tuo account sia aggiunto agli utenti di test nel tuo progetto Google Cloud.';
+                            } else if (tokenResponse.error_description) {
+                                message = tokenResponse.error_description;
+                            }
+                            showToast(message, 'error');
+                            return;
+                        }
+
+                        if (tokenResponse.access_token) {
                             setGoogleAccessToken(tokenResponse.access_token);
                             localStorage.setItem('google_access_token', tokenResponse.access_token);
-                            
+                    
                             // Fetch user info after getting token
-                            try {
-                                // Initialize the client before using it
-                                await window.gapi.client.init({});
-                                const userInfo = await window.gapi.client.oauth2.userinfo.get();
+                            window.gapi.client.init({}).then(() => {
+                                return window.gapi.client.oauth2.userinfo.get();
+                            }).then((userInfo: any) => {
                                 onGoogleLogin({
                                     email: userInfo.result.email,
                                     name: userInfo.result.name,
                                     picture: userInfo.result.picture,
                                 });
                                 showToast('Login riuscito!', 'success');
-                            } catch (error) {
+                            }).catch((error: any) => {
                                 console.error("Error fetching user info:", error);
                                 showToast('Errore nel recupero delle info utente.', 'error');
-                            }
-                        } else {
-                            console.error("Token response error:", tokenResponse);
-                            showToast('Errore durante l\'autenticazione con Google.', 'error');
+                            });
                         }
                     },
                 });
