@@ -1,9 +1,11 @@
 
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
 const {google} = require("googleapis");
 
 initializeApp();
+const db = getFirestore();
 
 // Helper function to create an authenticated OAuth2 client from an access token.
 const getAuthenticatedClientFromToken = (token) => {
@@ -50,6 +52,96 @@ const handleApiError = (error, functionName) => {
     throw new HttpsError(httpsErrorCode, finalMessage, { serverMessage: finalMessage });
 };
 
+// --- NEW SECURE FUNCTIONS ---
+
+exports.setInitialAdmin = onCall({
+    secrets: false,
+}, async (request) => {
+    const { googleAuthToken } = request.data;
+    try {
+        const authClient = getAuthenticatedClientFromToken(googleAuthToken);
+        const userInfoClient = google.oauth2({ version: 'v2', auth: authClient });
+        const userInfoRes = await userInfoClient.userinfo.get();
+        const userEmail = userInfoRes.data.email;
+
+        if (!userEmail) {
+            throw new HttpsError('unauthenticated', 'Could not retrieve user email from token.');
+        }
+
+        const configDocRef = db.collection('configuration').doc('main');
+        const configDoc = await configDocRef.get();
+
+        if (configDoc.exists) {
+            const configData = configDoc.data();
+            if (configData.adminEmails && configData.adminEmails.length > 0) {
+                // Admins already exist, do nothing.
+                return { success: true, message: 'Admins already configured.' };
+            }
+        }
+        
+        // If doc doesn't exist or admin list is empty, set this user as the first admin.
+        await configDocRef.set({ adminEmails: [userEmail] }, { merge: true });
+
+        return { success: true, message: `User ${userEmail} set as the first administrator.` };
+
+    } catch (error) {
+        handleApiError(error, 'setInitialAdmin');
+    }
+});
+
+exports.updateConfig = onCall({
+    secrets: false,
+}, async (request) => {
+    const { googleAuthToken, configPayload } = request.data;
+    if (!configPayload || typeof configPayload !== 'object') {
+        throw new HttpsError('invalid-argument', 'The "configPayload" object is required.');
+    }
+
+    try {
+        const authClient = getAuthenticatedClientFromToken(googleAuthToken);
+        const userInfoClient = google.oauth2({ version: 'v2', auth: authClient });
+        const userInfoRes = await userInfoClient.userinfo.get();
+        const userEmail = userInfoRes.data.email;
+
+        const configDocRef = db.collection('configuration').doc('main');
+        const configDoc = await configDocRef.get();
+
+        if (!configDoc.exists) {
+            throw new HttpsError('not-found', 'Configuration document does not exist.');
+        }
+        
+        const configData = configDoc.data();
+        const currentAdmins = (configData.adminEmails || []).map(e => e.toLowerCase());
+
+        if (currentAdmins.length === 0) {
+             throw new HttpsError('permission-denied', 'Nessun amministratore è ancora configurato.');
+        }
+
+        if (!currentAdmins.includes(userEmail.toLowerCase())) {
+            throw new HttpsError('permission-denied', 'Non sei autorizzato a eseguire questa azione.');
+        }
+
+        // Validate payload to prevent unwanted fields from being written
+        const allowedFields = [
+            'workingHours', 'dateOverrides', 'sportsData', 'consultantInfo',
+            'slotInterval', 'minimumNoticeHours', 'googleCalendarIds', 'adminEmails'
+        ];
+        const invalidFields = Object.keys(configPayload).filter(key => !allowedFields.includes(key));
+        if (invalidFields.length > 0) {
+            throw new HttpsError('invalid-argument', `Invalid config fields: ${invalidFields.join(', ')}`);
+        }
+        
+        await configDocRef.update(configPayload);
+
+        return { success: true, message: 'Configuration updated successfully.' };
+
+    } catch (error) {
+        handleApiError(error, 'updateConfig');
+    }
+});
+
+
+// --- EXISTING GOOGLE CALENDAR FUNCTIONS ---
 
 exports.getGoogleCalendarList = onCall({
     secrets: false,

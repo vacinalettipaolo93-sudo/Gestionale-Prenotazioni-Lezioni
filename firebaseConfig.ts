@@ -15,7 +15,7 @@ import {
     getDocs,
     addDoc
 } from "firebase/firestore";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
@@ -38,6 +38,8 @@ let auth: any = null;
 let getGoogleCalendarList: any = null;
 let getGoogleCalendarAvailability: any = null;
 let createGoogleCalendarEvent: any = null;
+let setInitialAdmin: any = null;
+let updateConfig: any = null;
 const firestore = { Timestamp };
 
 if (isFirebaseConfigValid) {
@@ -46,10 +48,12 @@ if (isFirebaseConfigValid) {
     auth = getAuth(app);
     const functions = getFunctions(app, 'us-central1');
 
-    // Funzioni callable che ora useranno il token OAuth 2.0
+    // Funzioni callable che usano il token OAuth 2.0 per operazioni sicure
     getGoogleCalendarList = httpsCallable(functions, 'getGoogleCalendarList');
     getGoogleCalendarAvailability = httpsCallable(functions, 'getGoogleCalendarAvailability');
     createGoogleCalendarEvent = httpsCallable(functions, 'createGoogleCalendarEvent');
+    setInitialAdmin = httpsCallable(functions, 'setInitialAdmin');
+    updateConfig = httpsCallable(functions, 'updateConfig');
 
 } else {
     if ((import.meta as any).env.DEV) {
@@ -64,4 +68,6 @@ export {
     getGoogleCalendarList,
     getGoogleCalendarAvailability,
     createGoogleCalendarEvent,
+    setInitialAdmin,
+    updateConfig,
 };

@@ -9,8 +9,8 @@ import Toast from './components/Toast';
 import { CogIcon, InformationCircleIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { db, isFirebaseConfigValid } from './firebaseConfig';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigValid, setInitialAdmin, updateConfig } from './firebaseConfig';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 interface GoogleUser {
     email: string;
@@ -49,8 +49,8 @@ function App() {
   
   // Check if logged in user is an admin
   useEffect(() => {
-    if (googleUser && adminEmails) {
-        setIsAdmin(adminEmails.includes(googleUser.email));
+    if (googleUser && adminEmails.length > 0) {
+        setIsAdmin(adminEmails.map(e => e.toLowerCase()).includes(googleUser.email.toLowerCase()));
     } else {
         setIsAdmin(false);
     }
@@ -61,7 +61,11 @@ function App() {
 
   // --- FIREBASE REALTIME DATA ---
   useEffect(() => {
-    if (!isFirebaseConfigValid || !db) {
+    if (!isFirebaseConfigValid || !db || !configDocRef) {
+        setSportsData(INITIAL_SPORTS_DATA);
+        setConsultantInfo(INITIAL_CONSULTANT_INFO);
+        setWorkingHours(INITIAL_WORKING_HOURS);
+        setDateOverrides(INITIAL_DATE_OVERRIDES);
         setIsLoadingConfig(false);
         return;
     }
@@ -69,38 +73,28 @@ function App() {
     const unsubscribe = onSnapshot(configDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as AppConfig;
-        setSportsData(data.sportsData);
-        setConsultantInfo(data.consultantInfo);
-        setWorkingHours(data.workingHours);
-        setDateOverrides(data.dateOverrides);
+        setSportsData(data.sportsData || INITIAL_SPORTS_DATA);
+        setConsultantInfo(data.consultantInfo || INITIAL_CONSULTANT_INFO);
+        setWorkingHours(data.workingHours || INITIAL_WORKING_HOURS);
+        setDateOverrides(data.dateOverrides || INITIAL_DATE_OVERRIDES);
         setSlotInterval(data.slotInterval || INITIAL_SLOT_INTERVAL);
         setMinimumNoticeHours(data.minimumNoticeHours || INITIAL_MINIMUM_NOTICE_HOURS);
         setSelectedCalendarIds(data.googleCalendarIds || []);
         setAdminEmails(data.adminEmails || []);
       } else {
-        console.log("Configuration document not found. Initializing...");
-        const initialConfig: AppConfig = {
-          sportsData: INITIAL_SPORTS_DATA,
-          consultantInfo: INITIAL_CONSULTANT_INFO,
-          workingHours: INITIAL_WORKING_HOURS,
-          dateOverrides: INITIAL_DATE_OVERRIDES,
-          slotInterval: INITIAL_SLOT_INTERVAL,
-          minimumNoticeHours: INITIAL_MINIMUM_NOTICE_HOURS,
-          googleCalendarIds: [],
-          adminEmails: [], // Start with no admins. The first user to log in will be added.
-        };
-        try {
-          await setDoc(configDocRef, initialConfig);
-          console.log("Successfully initialized configuration in Firestore.");
-        } catch (error) {
-          console.error("Error initializing Firestore configuration:", error);
-          showToast("Errore critico: impossibile inizializzare la configurazione dell'app.", 'error');
-        }
+        console.log("Configuration document not found. This will be created on first admin login.");
+        // Set local state to defaults, but don't try to write to Firestore here.
+        // The first admin login will trigger the creation of the document via a Firebase Function.
+        setSportsData(INITIAL_SPORTS_DATA);
+        setConsultantInfo(INITIAL_CONSULTANT_INFO);
+        setWorkingHours(INITIAL_WORKING_HOURS);
+        setDateOverrides(INITIAL_DATE_OVERRIDES);
+        setAdminEmails([]);
       }
       if(isLoadingConfig) setIsLoadingConfig(false);
     }, (error) => {
       console.error("Error fetching Firestore configuration:", error);
-      showToast("Impossibile caricare la configurazione dell'applicazione. Controlla la connessione e la configurazione di Firebase.", 'error');
+      showToast("Impossibile caricare la configurazione. Controlla la connessione e la configurazione di Firebase.", 'error');
       setIsLoadingConfig(false);
     });
 
@@ -131,76 +125,83 @@ function App() {
     setBackgroundSport(null);
   };
     
+  // --- SECURE SAVE HANDLERS (via Firebase Functions) ---
+  const callUpdateConfig = async (configPayload: Partial<AppConfig>) => {
+    const googleAccessToken = localStorage.getItem('google_access_token');
+    if (!googleAccessToken) {
+        showToast('Devi essere loggato per salvare le modifiche.', 'error');
+        throw new Error("User not authenticated");
+    }
+    if (!updateConfig) {
+        showToast('Funzione di aggiornamento non disponibile.', 'error');
+        throw new Error("Update function not available");
+    }
+    await updateConfig({ googleAuthToken: googleAccessToken, configPayload });
+  };
+
   const handleSaveWorkingHours = async (newHours: WorkingHours) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { workingHours: newHours });
+      await callUpdateConfig({ workingHours: newHours });
       showToast('Orari di lavoro aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving working hours:", error);
       showToast("Errore nel salvataggio degli orari.", 'error');
     }
-  }
+  };
   
   const handleSaveDateOverrides = async (newOverrides: DateOverrides) => {
-     if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { dateOverrides: newOverrides });
+      await callUpdateConfig({ dateOverrides: newOverrides });
       showToast('Eccezioni del calendario aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving date overrides:", error);
       showToast("Errore nel salvataggio delle eccezioni.", 'error');
     }
-  }
+  };
   
   const handleSaveSportsData = async (newSportsData: Sport[]) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { sportsData: newSportsData });
+      await callUpdateConfig({ sportsData: newSportsData });
       showToast('Dati di sport, lezioni e sedi aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving sports data:", error);
       showToast("Errore nel salvataggio dei dati sport.", 'error');
     }
-  }
+  };
   
   const handleSaveConsultantInfo = async (newInfo: ConsultantInfo) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { consultantInfo: newInfo });
+      await callUpdateConfig({ consultantInfo: newInfo });
       showToast('Informazioni del profilo aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving consultant info:", error);
       showToast("Errore nel salvataggio del profilo.", 'error');
     }
-  }
+  };
 
   const handleSaveSlotInterval = async (newInterval: number) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { slotInterval: newInterval });
+      await callUpdateConfig({ slotInterval: newInterval });
       showToast('Intervallo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving slot interval:", error);
       showToast("Errore nel salvataggio dell'intervallo.", 'error');
     }
-  }
+  };
 
   const handleSaveMinimumNoticeHours = async (newNotice: number) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { minimumNoticeHours: newNotice });
+      await callUpdateConfig({ minimumNoticeHours: newNotice });
       showToast('Preavviso minimo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving minimum notice:", error);
       showToast("Errore nel salvataggio del preavviso minimo.", 'error');
     }
-  }
+  };
 
   const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { googleCalendarIds: calendarIds });
+      await callUpdateConfig({ googleCalendarIds: calendarIds });
       showToast('Calendari per la sincronizzazione aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving selected calendars:", error);
@@ -209,9 +210,8 @@ function App() {
   };
 
   const handleSaveAdminEmails = async (newEmails: string[]) => {
-    if (!configDocRef) return;
     try {
-      await updateDoc(configDocRef, { adminEmails: newEmails });
+      await callUpdateConfig({ adminEmails: newEmails });
       showToast('Lista amministratori aggiornata!', 'success');
     } catch (error) {
       console.error("Error saving admin emails:", error);
@@ -221,16 +221,23 @@ function App() {
 
    const handleGoogleLogin = async (user: GoogleUser) => {
     setGoogleUser(user);
-    // Check if this is the first admin setup
-    if (adminEmails.length === 0 && configDocRef) {
-        try {
-            // Automatically make the first logged-in user an admin
-            await updateDoc(configDocRef, { adminEmails: [user.email] });
-            showToast(`Benvenuto! ${user.name} è stato impostato come primo amministratore.`, 'success');
-            // The onSnapshot listener will update the local adminEmails state automatically.
-        } catch (error) {
-            console.error("Error setting first admin:", error);
-            showToast("Errore nell'impostazione del primo amministratore.", 'error');
+    // The onSnapshot listener will tell us if admins are already configured.
+    // We only try to set the initial admin if the list is empty.
+    if (adminEmails.length === 0) {
+        const googleAccessToken = localStorage.getItem('google_access_token');
+        if (googleAccessToken && setInitialAdmin) {
+            try {
+                // Call the Firebase Function to set the initial admin.
+                // This is safe to call even if another user is racing to become admin,
+                // as the function is idempotent if admins already exist.
+                await setInitialAdmin({ googleAuthToken: googleAccessToken });
+                showToast(`Benvenuto! ${user.name} è stato impostato come primo amministratore.`, 'success');
+                // The onSnapshot listener will soon receive the update and grant admin access.
+            } catch (error: any) {
+                console.error("Error setting first admin:", error);
+                const message = error?.details?.serverMessage || "Errore nell'impostazione del primo amministratore.";
+                showToast(message, 'error');
+            }
         }
     }
    }
