@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
-import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon } from './icons';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, InformationCircleIcon, CheckIcon } from './icons';
 import { getGoogleCalendarList, getServiceAccountEmail } from '../firebaseConfig';
 
 interface GoogleCalendar {
@@ -77,7 +77,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [copied, setCopied] = useState(false);
 
     const writableCalendars = useMemo(() => {
-        return allGoogleCalendars.filter(cal => cal.accessRole === 'writer' || cal.accessRole === 'owner');
+        return allGoogleCalendars.filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer');
     }, [allGoogleCalendars]);
 
     const weekDays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
@@ -92,8 +92,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
     const fetchCalendars = useCallback(async () => {
-        if (!isBackendConfigured) return;
-
         setIsLoadingCalendars(true);
         setCalendarError(null);
         try {
@@ -102,25 +100,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             setAllGoogleCalendars(data.calendars || []);
         } catch (error: any) {
              console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error);
-            let detailedMessage = "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
-
-            if (error.code === 'deadline-exceeded') {
-                detailedMessage = "Il server ha impiegato troppo tempo per rispondere (timeout). La causa più comune è un problema di configurazione della fatturazione su Google Cloud o un numero molto elevato di calendari. Prova a ricaricare la pagina.";
-            } else if (error.details?.serverMessage) {
-                detailedMessage = `Errore dal server: ${error.details.serverMessage}`;
-            } else if (error.message) {
-                detailedMessage = error.message;
-            }
-
-            setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della console per maggiori dettagli tecnici.`);
+            const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
+            setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della funzione per maggiori dettagli.`);
         } finally {
             setIsLoadingCalendars(false);
         }
-    }, [isBackendConfigured]);
+    }, []);
 
-    // Fetch Service Account Email once when backend is configured
+    // Fetch Service Account Email once
     useEffect(() => {
-        if (isBackendConfigured && !serviceAccountEmail && !isLoadingEmail) {
+        if (!serviceAccountEmail && !isLoadingEmail) {
             setIsLoadingEmail(true);
             setEmailError(null);
             getServiceAccountEmail()
@@ -137,9 +126,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     setIsLoadingEmail(false);
                 });
         }
-    }, [isBackendConfigured, serviceAccountEmail, isLoadingEmail]);
+    }, [serviceAccountEmail, isLoadingEmail]);
 
-    // Fetch Google Calendars when relevant tabs are active
+    // Fetch Google Calendars when relevant tabs are active and backend is configured
     useEffect(() => {
         const shouldFetch = isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
         
@@ -774,14 +763,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     
     const renderIntegrationsTab = () => {
-        const renderNoCalendarsFound = () => (
+
+        const renderSetupInstructions = () => (
             <div className="p-6 bg-neutral-100 border border-neutral-200 rounded-lg text-sm">
-                <p className="font-semibold text-xl text-neutral-800 mb-4">Nessun calendario trovato o accessibile</p>
-                <p className="text-neutral-400 mb-6">Questo è normale se non hai ancora condiviso i tuoi calendari. Segui questi passaggi per risolvere:</p>
+                <p className="font-semibold text-xl text-neutral-800 mb-4">Configura l'integrazione con Google Calendar</p>
+                <p className="text-neutral-400 mb-6">Per permettere a questa applicazione di leggere la tua disponibilità e creare eventi, devi condividere i tuoi calendari di Google Calendar con il suo Service Account. Segui questi passaggi:</p>
                 
                 <ol className="space-y-4 list-decimal list-inside text-neutral-600">
                     <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">Copia l'email del Service Account</span>
+                        <span className="font-bold">1. Abilita l'API di Google Calendar</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-3">
+                            Assicurati che l'API di Google Calendar sia abilitata per il tuo progetto Google Cloud. Potrebbe essere necessario abilitare anche la fatturazione per il progetto.
+                        </p>
+                        <a href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} target="_blank" rel="noopener noreferrer" className="inline-block bg-blue-500 text-white px-4 py-2 text-sm font-semibold rounded hover:bg-blue-600 transition-colors">
+                            Abilita Google Calendar API
+                        </a>
+                    </li>
+                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
+                        <span className="font-bold">2. Copia l'email del Service Account</span>
                         <p className="text-xs text-neutral-400 mt-1 mb-2">Questo è l'indirizzo "robot" che accederà ai tuoi calendari.</p>
                         {isLoadingEmail && (
                             <div className="flex items-center text-neutral-400 text-xs">
@@ -809,52 +808,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </li>
 
                     <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">Apri Google Calendar e condividi</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-3">Vai alle impostazioni del calendario che vuoi usare, cerca la sezione "Condividi con persone..." e incolla l'email.</p>
+                        <span className="font-bold">3. Condividi i tuoi calendari Google</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-3">Vai alle impostazioni del calendario che vuoi usare, cerca la sezione "Condividi con persone o gruppi specifici" e incolla l'email del Service Account qui sopra.</p>
                         <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="inline-block bg-blue-500 text-white px-4 py-2 text-sm font-semibold rounded hover:bg-blue-600 transition-colors">
                             Apri Impostazioni Google Calendar
                         </a>
                     </li>
 
                     <li className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-800">
-                        <span className="font-bold">Imposta i permessi corretti (Importante!)</span>
-                        <p className="text-xs mt-1">Quando condividi, assicurati di selezionare l'opzione <strong className="font-bold">"Apportare modifiche agli eventi"</strong> dal menu a tendina. Senza questo permesso, l'applicazione non potrà creare le prenotazioni.</p>
+                        <span className="font-bold">4. Imposta i permessi corretti (Importante!)</span>
+                        <p className="text-xs mt-1">Quando condividi, assicurati di selezionare il permesso <strong className="font-bold">"Apportare modifiche agli eventi"</strong>. Senza questo permesso, l'applicazione non potrà creare le prenotazioni.</p>
                     </li>
                     
                     <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">Verifica di nuovo</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-3">Dopo aver condiviso, torna qui e clicca il pulsante qui sotto per ricaricare la lista dei calendari.</p>
+                        <span className="font-bold">5. Verifica di nuovo</span>
+                        <p className="text-xs text-neutral-400 mt-1 mb-3">Dopo aver condiviso, torna qui e clicca il pulsante qui sotto per ricaricare la lista dei calendari. Potrebbero essere necessari alcuni minuti prima che le modifiche siano effettive.</p>
                         <button 
-                                onClick={fetchCalendars}
+                                onClick={() => { fetchCalendars(); onRefreshAuthStatus(); }}
                                 className="text-sm text-white bg-primary hover:bg-primary-dark py-2 px-4 rounded transition-colors disabled:bg-neutral-400"
-                                disabled={isLoadingCalendars}
+                                disabled={isLoadingCalendars || isCheckingAuth}
                             >
-                                {isLoadingCalendars ? 'Caricamento...' : 'Ricarica Calendari'}
+                                {isLoadingCalendars || isCheckingAuth ? 'Verifica...' : 'Ricarica Stato e Calendari'}
                         </button>
-                         <p className="text-xs text-neutral-400 mt-2">
-                            <strong>Nota:</strong> Dopo aver condiviso, potrebbero essere necessari alcuni minuti prima che il calendario appaia qui. Se non lo vedi subito, attendi 1-2 minuti e prova a ricaricare di nuovo.
-                        </p>
                     </li>
                 </ol>
             </div>
         );
 
-
-        if (!isBackendConfigured) {
-             return (
-                <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
-                    <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
-                    <p className="text-neutral-400">Completa la configurazione per visualizzare le opzioni di integrazione.</p>
-                </div>
-            );
-        }
-        
         return (
             <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
                 <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
+                
+                { !isBackendConfigured && renderSetupInstructions() }
+
+                { isBackendConfigured && (
                 <div>
                     <div className="flex justify-between items-center mb-6 p-4 bg-green-900/10 border border-green-400/30 rounded-lg">
-                        <p className="text-green-400 font-semibold">Configurazione backend attiva e connessa a Google.</p>
+                        <div className="flex items-center">
+                            <CheckIcon className="w-6 h-6 text-green-400 mr-3" />
+                            <p className="text-green-400 font-semibold">Configurazione backend attiva e connessa a Google.</p>
+                        </div>
                          <button 
                             onClick={onRefreshAuthStatus} 
                             className="text-sm text-primary hover:underline disabled:text-neutral-400 disabled:no-underline"
@@ -878,8 +871,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="p-4 bg-red-900/50 border border-red-400 text-red-300 rounded-md">
                             <p className="font-bold">Errore</p>
                             <p>{calendarError}</p>
+                            <button 
+                                onClick={fetchCalendars}
+                                className="mt-2 text-sm text-white bg-primary hover:bg-primary-dark py-1 px-3 rounded transition-colors disabled:bg-neutral-400"
+                                disabled={isLoadingCalendars}
+                            >
+                                Riprova
+                            </button>
                         </div>
-                    ) : allGoogleCalendars.length > 0 ? (
+                    ) : writableCalendars.length > 0 ? (
                         <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
                             {allGoogleCalendars.map(cal => (
                                 <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
@@ -890,23 +890,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
                                 />
                                 <span className="ml-3 text-neutral-600">{cal.summary}</span>
+                                { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
+                                    <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
+                                }
                                 </label>
                             ))}
                         </div>
                     ) : (
-                        renderNoCalendarsFound()
+                        renderSetupInstructions()
                     )}
                     
-                    <div className="mt-6 text-right">
+                    { writableCalendars.length > 0 && <div className="mt-6 text-right">
                         <button 
                             onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
-                            disabled={isLoadingCalendars || allGoogleCalendars.length === 0}
+                            disabled={isLoadingCalendars}
                             className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-neutral-400"
                         >
                             Salva Calendari Selezionati
                         </button>
-                    </div>
+                    </div> }
                 </div>
+                )}
             </div>
         );
     };
@@ -919,59 +923,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     ];
     
     const renderAuthError = () => {
-        if (!authError || isBackendConfigured) return null;
-    
-        const isSimpleConfigError = authError === 'BACKEND_NOT_CONFIGURED';
-        const detailedErrorMessage = isSimpleConfigError ? null : authError;
+        if (isBackendConfigured || isCheckingAuth) return null;
     
         return (
-            <div className="p-4 mb-6 bg-red-900/50 border border-red-400/80 text-red-300 rounded-lg shadow-lg" role="alert">
-                <h4 className="font-bold text-lg text-white mb-2">Azione Richiesta: Completa la Configurazione di Google</h4>
-                <p className="text-sm mb-4">
-                    L'integrazione con Google Calendar non è attiva o ha riscontrato un problema.
-                </p>
-                
-                {detailedErrorMessage && (
-                     <div className="mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
-                        <p className="font-semibold text-red-300">Messaggio di errore dal server:</p>
-                        <p className="text-red-200 text-sm font-mono">{detailedErrorMessage}</p>
-                    </div>
-                )}
-    
-                <p className="text-sm mb-4 text-white font-semibold">Per risolvere, controlla attentamente i seguenti punti:</p>
-    
-                <div className="text-sm space-y-4 mb-4 pl-4 border-l-2 border-red-400/50">
+            <div className="p-4 mb-6 bg-red-100 border border-red-400 text-red-700 rounded-lg shadow-md" role="alert">
+                <div className="flex">
+                    <div className="py-1"><InformationCircleIcon className="fill-current h-6 w-6 text-red-500 mr-4"/></div>
                     <div>
-                        <p className="font-semibold text-white">1. Posiziona il file delle credenziali</p>
-                        <p className="text-red-200 mt-1">
-                            Assicurati che il file <code>credentials.json</code> scaricato da Google Cloud sia nella cartella <code>functions</code> del tuo progetto e di aver rieseguito il deploy (<code>firebase deploy --only functions</code>).
+                        <p className="font-bold">Azione Richiesta: Configurazione Google Calendar Incompleta</p>
+                        <p className="text-sm">
+                            L'integrazione con Google Calendar non è attiva. Per abilitare la sincronizzazione, vai alla scheda "Integrazioni" e segui le istruzioni.
                         </p>
+                        {authError && authError !== 'BACKEND_NOT_CONFIGURED' && (
+                             <div className="mt-2 p-2 bg-red-200 border border-red-300 rounded-md">
+                                <p className="font-semibold text-red-800 text-xs">Dettaglio Errore:</p>
+                                <p className="text-red-700 text-xs font-mono">{authError}</p>
+                            </div>
+                        )}
+                        <div className="mt-4">
+                            <button
+                                onClick={() => setActiveTab('integrations')}
+                                className="bg-primary text-white font-semibold py-2 px-4 rounded-md hover:bg-primary-dark transition-colors text-sm"
+                            >
+                                Vai a Integrazioni
+                            </button>
+                            <button
+                                onClick={onRefreshAuthStatus}
+                                disabled={isCheckingAuth}
+                                className="ml-2 border border-primary text-primary font-semibold py-2 px-4 rounded-md hover:bg-primary/10 transition-colors disabled:opacity-50 text-sm"
+                            >
+                                {isCheckingAuth ? 'Verifica...' : 'Riprova Verifica'}
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <p className="font-semibold text-white">2. Abilita l'API di Google Calendar</p>
-                        <p className="text-red-200 mt-1">
-                            È un passaggio fondamentale. Visita il link seguente per assicurarti che l'API sia attiva per il tuo progetto. Se non lo è, abilitala.
-                            <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=gestionale-prenotazioni-lezio" target="_blank" rel="noopener noreferrer" className="block mt-2 font-bold text-white underline hover:text-red-200">
-                               Abilita Google Calendar API per 'gestionale-prenotazioni-lezio' &rarr;
-                            </a>
-                        </p>
-                    </div>
-                    <div>
-                        <p className="font-semibold text-white">3. Condividi i tuoi calendari</p>
-                        <p className="text-red-200 mt-1">
-                           Apri il file <code>credentials.json</code>, copia l'indirizzo email alla voce <code>client_email</code> e usalo per condividere i tuoi calendari da Google Calendar, assegnandogli i permessi per "Apportare modifiche agli eventi".
-                        </p>
-                    </div>
-                </div>
-                
-                <div className="mt-6 text-center">
-                    <button
-                        onClick={onRefreshAuthStatus}
-                        disabled={isCheckingAuth}
-                        className="bg-red-500/50 text-white font-semibold py-2 px-6 rounded-md border border-red-400 hover:bg-red-500/80 transition-colors disabled:opacity-50"
-                    >
-                        {isCheckingAuth ? 'Verifica...' : 'Ho completato i passaggi, Riprova'}
-                    </button>
                 </div>
             </div>
         );
@@ -979,16 +963,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
 
     return (
-        <div className="flex min-h-screen bg-neutral-100 text-neutral-600">
+        <div className="flex flex-col md:flex-row min-h-screen bg-neutral-100 text-neutral-600">
             {/* Sidebar */}
-            <nav className="w-64 bg-neutral-50 shadow-md p-4 flex flex-col border-r border-neutral-200">
-                <div className="space-y-2 flex-grow">
+            <nav className="w-full md:w-64 bg-neutral-50 shadow-md p-4 flex flex-col border-r border-neutral-200 flex-shrink-0">
+                <div className="flex flex-row md:flex-col flex-wrap md:flex-nowrap gap-1 md:space-y-2 flex-grow">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`w-full text-left font-semibold p-3 rounded-md transition-colors ${
-                                activeTab === tab.id ? 'bg-primary text-primary-text' : 'text-neutral-600 hover:bg-neutral-100'
+                            className={`w-full text-left font-semibold p-3 rounded-md transition-colors text-sm sm:text-base ${
+                                activeTab === tab.id ? 'bg-primary text-white shadow' : 'text-neutral-600 hover:bg-neutral-200/50'
                             }`}
                         >
                             {tab.label}
@@ -997,7 +981,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                  <button 
                     onClick={onLogout} 
-                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-400 hover:bg-red-500/10"
+                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-500 hover:bg-red-500/10 mt-4"
                 >
                     Logout
                 </button>

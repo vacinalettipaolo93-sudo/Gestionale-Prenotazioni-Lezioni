@@ -1,111 +1,107 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/h");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const { google } = require("googleapis");
-const path = require("path");
-const fs = require("fs");
-const util = require("util");
+const {google} = require("googleapis");
 
-// In CommonJS, __dirname è disponibile a livello globale, quindi non c'è bisogno della logica di import.meta.url.
+// Initialize Firebase Admin SDK. It will automatically use the
+// service account credentials from the Cloud Functions environment.
 admin.initializeApp();
 
-// --- CONFIGURAZIONE CON SERVICE ACCOUNT ---
+// Create a Google Auth client that uses the Application Default Credentials.
+// This is the standard way to authenticate in a GCP environment.
+const auth = new google.auth.GoogleAuth({
+  scopes: [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.readonly",
+  ],
+});
 
-const getAuthenticatedClient = async () => {
-  const credentialsPath = path.resolve(__dirname, "./credentials.json");
-  if (!fs.existsSync(credentialsPath)) {
-    throw new Error("File credentials.json non trovato nella cartella /functions.");
-  }
 
+async function getAuthenticatedClient() {
   try {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: credentialsPath,
-      scopes: [
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar.readonly",
-      ],
-    });
-    return await auth.getClient();
+    const authClient = await auth.getClient();
+    return authClient;
   } catch (error) {
-    console.error("getAuthenticatedClient failed:", error.message);
-    let detailedMessage = `Errore di autenticazione: ${error.message}.`;
-    if (error.message && error.message.toLowerCase().includes('api is not enabled')) {
-        detailedMessage += " Assicurati che l'API di Google Calendar sia abilitata nel tuo progetto Google Cloud.";
-    } else {
-        detailedMessage += " Assicurati che il file 'credentials.json' sia valido e non corrotto.";
-    }
-    const augmentedError = new Error(detailedMessage);
-    augmentedError.stack = error.stack;
-    throw augmentedError;
+    console.error("Error getting authenticated client:", error);
+    // Provide a more helpful error message for the developer.
+    throw new HttpsError("internal",
+        "Failed to authenticate with Google APIs. This can happen if the Google Calendar API is not enabled in your Google Cloud project, or if the service account lacks permissions. Please check the function logs for more details.",
+        { serverMessage: error.message });
   }
-};
+}
 
 const handleApiError = (error, functionName) => {
     // Log the full error for server-side debugging, which is crucial.
-    // Using console.error directly is safer than util.inspect for complex error objects.
-    console.error(`ERRORE IN ${functionName}:`, error);
+    console.error(`ERROR IN ${functionName}:`, error);
 
-    // Attempt to extract the most specific error message from the Google API response.
-    let specificMessage = "Si è verificato un errore imprevisto sul server.";
+    let specificMessage = "An unexpected server error occurred.";
     if (error.response?.data?.error?.message) {
-        // Gaxios error structure
         specificMessage = error.response.data.error.message;
     } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
-        // Alternative Google API error structure
-        specificMessage = error.errors.map(e => e.message).join('; ');
+        specificMessage = error.errors.map((e) => e.message).join('; ');
     } else if (error.message) {
-        // Fallback for standard Error objects or other types
         specificMessage = error.message;
     }
     
-    // Add the HTTP status code if available, as it's very useful for debugging.
+    // Check for HttpsError and rethrow if it's already in the correct format.
+    if (error.code && error.httpErrorCode) {
+        throw error;
+    }
+
     const statusCode = error.code || error.response?.status;
     const finalMessage = statusCode ? `(Errore ${statusCode}) ${specificMessage}` : specificMessage;
 
-    // Throw an HttpsError. The client will receive this structured error.
     throw new HttpsError('internal', finalMessage, { serverMessage: finalMessage });
 };
+
 
 // --- FUNZIONI CALLABLE DAL FRONTEND ---
 
 exports.getServiceAccountEmail = onCall(async (request) => {
-    const credentialsPath = path.resolve(__dirname, "./credentials.json");
-    if (!fs.existsSync(credentialsPath)) {
-        throw new HttpsError("not-found", "File credentials.json non trovato.");
+    // This function must be called by an authenticated admin user.
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     try {
-        const credentialsContent = fs.readFileSync(credentialsPath);
-        const credentials = JSON.parse(credentialsContent);
-        if (!credentials.client_email) {
-            throw new HttpsError("internal", "Il campo client_email non è presente nel file credentials.json.");
+        // Get the project ID from the initialized admin SDK, which is the most reliable way.
+        const projectId = admin.app().options.projectId;
+        
+        if (!projectId) {
+            console.error("Could not determine project ID from Firebase Admin SDK.");
+            throw new HttpsError("internal", "Unable to determine project ID.");
         }
-        return { email: credentials.client_email };
+        
+        // The default service account email follows a standard format.
+        const serviceAccountEmail = `${projectId}@appspot.gserviceaccount.com`;
+        
+        return { email: serviceAccountEmail };
+
     } catch (error) {
-        console.error("Errore durante la lettura di credentials.json:", error);
-        throw new HttpsError("internal", "Impossibile leggere o analizzare il file credentials.json.");
+        handleApiError(error, 'getServiceAccountEmail');
     }
 });
 
 
-exports.checkGoogleAuthStatus = onCall({ timeoutSeconds: 120 }, async (request) => {
-    const credentialsPath = path.resolve(__dirname, "./credentials.json");
-    if (!fs.existsSync(credentialsPath)) {
-        return { isConfigured: false };
-    }
-    
+exports.checkGoogleAuthStatus = onCall(async (request) => {
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
-        
+        // A simple API call to test the connection and permissions.
         await calendar.calendarList.list({ maxResults: 1 });
-        
         return { isConfigured: true };
     } catch (error) {
-        handleApiError(error, 'checkGoogleAuthStatus');
+        console.error("Google Auth status check failed:", error);
+        // This function is called by unauthenticated users to check if setup is needed.
+        // It's better to return a status than to throw an error that shows up in the user's console.
+        return { isConfigured: false, error: error.message };
     }
 });
 
 
-exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) => {
+exports.getGoogleCalendarList = onCall(async (request) => {
+    // This function must be called by an authenticated admin user.
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
     try {
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
@@ -115,8 +111,6 @@ exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) 
             fields: 'items(id,summary,accessRole)',
         });
         
-        // FIX: Aggiunto controllo di robustezza. Se la risposta da Google non ha la struttura attesa,
-        // restituisce un array vuoto invece di causare un crash.
         const calendars = (res.data && res.data.items) ? res.data.items : [];
         return { calendars: calendars };
 
@@ -128,8 +122,9 @@ exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) 
 exports.getGoogleCalendarAvailability = onCall({ timeoutSeconds: 120 }, async (request) => {
     const { timeMin, timeMax, calendarIds } = request.data;
     
-    if (!timeMin || !timeMax || !calendarIds) {
-        throw new HttpsError('invalid-argument', 'Parametri timeMin, timeMax e calendarIds richiesti.');
+    if (!timeMin || !timeMax || !calendarIds || !Array.isArray(calendarIds) || calendarIds.length === 0) {
+        // If no calendars are selected to check against, return no busy slots.
+        return { busy: [] };
     }
     
     try {

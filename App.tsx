@@ -101,22 +101,23 @@ function App() {
     setAuthError(null);
     try {
       const result = await checkGoogleAuthStatus();
-      const data = result.data as { isConfigured: boolean };
+      const data = result.data as { isConfigured: boolean, error?: string };
       if (typeof data?.isConfigured !== 'boolean') {
         throw new Error("La risposta del server per lo stato di configurazione non è valida.");
       }
       setIsBackendConfigured(data.isConfigured);
       if (!data.isConfigured) {
-        setAuthError('BACKEND_NOT_CONFIGURED');
+         setAuthError(data.error || 'BACKEND_NOT_CONFIGURED');
       }
     } catch (error: any) {
       console.error("Error checking backend config status:", error);
       setIsBackendConfigured(false);
 
-      if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('permission denied') || error.message.toLowerCase().includes('unauthenticated')))) {
+      if (error.code === 'unavailable') {
+          setAuthError('Impossibile connettersi al backend. Assicurati che le funzioni Firebase siano deployate correttamente.');
+      } else if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('permission denied') || error.message.toLowerCase().includes('unauthenticated')))) {
          setAuthError(
-            'ERRORE DI PERMESSI (Unauthenticated): L\'applicazione non ha il permesso di chiamare le funzioni sul server. ' +
-            'SOLUZIONE: Vai su Google Cloud Console -> Cloud Run, clicca su ciascuna delle tue 4 funzioni (es. checkgoogleauthstatus), vai alla scheda "Sicurezza" e seleziona "Consenti accesso pubblico".'
+            'ERRORE DI PERMESSI: L\'applicazione non può chiamare le funzioni sul server. SOLUZIONE: Vai su Google Cloud Console -> Cloud Functions, seleziona le funzioni \'checkGoogleAuthStatus\', \'getGoogleCalendarAvailability\' e \'createGoogleCalendarEvent\'. Per ciascuna, vai su \'Autorizzazioni\', clicca \'Aggiungi entità\', imposta \'Nuove entità\' su \'allUsers\' e assegna il ruolo \'Cloud Functions Invoker\'.'
         );
       } else {
         const detailedMessage = error?.details?.serverMessage || error.message;
