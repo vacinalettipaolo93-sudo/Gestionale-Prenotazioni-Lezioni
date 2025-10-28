@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
-import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon } from './icons';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, ClipboardIcon, InformationCircleIcon } from './icons';
 import { auth, getGoogleCalendarList } from '../firebaseConfig';
 import { GOOGLE_CLIENT_ID, GOOGLE_API_SCOPES } from '../googleConfig';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
@@ -88,6 +88,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
 
+    // Check if the Google Client ID has been configured by the user.
+    const isGoogleConfigured = GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith("437487120297");
+
     const isBackendConfigured = !!localStorage.getItem('google_access_token');
 
     const writableCalendars = useMemo(() => {
@@ -174,7 +177,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             console.error("Errore durante l'accesso con Google:", error);
             let message = `Errore di accesso: ${error.message}`;
             
-            // Provide more specific, helpful error messages
             if (error.code === 'auth/popup-closed-by-user') {
                 message = 'La finestra di accesso è stata chiusa prima del completamento.';
             } else if (error.code === 'auth/unauthorized-domain') {
@@ -183,7 +185,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 message = 'La finestra di popup è stata bloccata dal browser. Abilita i popup per questo sito e riprova.';
             }
         
-            // Avoid showing a toast for a cancelled request which can happen if the user clicks the button multiple times quickly.
             if (error.code !== 'auth/cancelled-popup-request') {
                 showToast(message, 'error');
             }
@@ -425,6 +426,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             } else {
                 return [...prev, calendarId];
             }
+        });
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('Copiato negli appunti!', 'success');
+        }, (err) => {
+            showToast('Impossibile copiare.', 'error');
+            console.error('Could not copy text: ', err);
         });
     };
 
@@ -844,11 +854,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                         </div>
                     </div>
-                    {GOOGLE_CLIENT_ID.startsWith("IL_TUO") && (
-                        <div className="mt-4 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm">
-                           <strong>Azione richiesta:</strong> Inserisci il tuo Google Client ID nel file <code className="font-mono bg-amber-200/50 p-1 rounded">googleConfig.ts</code> per abilitare la connessione.
-                        </div>
-                    )}
                 </div>
 
                 { isBackendConfigured && (
@@ -984,12 +989,53 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         { id: 'integrations', label: 'Integrazioni'},
         { id: 'admins', label: 'Amministratori' }
     ];
+
+    const renderSetupWizard = () => (
+        <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center relative">
+            <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
+                <XIcon className="w-8 h-8"/>
+            </button>
+            <div className="w-16 h-16 bg-amber-100 text-amber-500 flex items-center justify-center rounded-full mb-4">
+                <InformationCircleIcon className="w-10 h-10"/>
+            </div>
+            <h2 className="text-2xl font-bold text-neutral-800 mb-2">Configurazione Richiesta</h2>
+            <p className="text-neutral-400 mb-6 max-w-2xl">Per abilitare l'accesso con Google e la sincronizzazione del calendario, è necessario configurare l'app con le tue credenziali Google. Segui questi passaggi:</p>
+            
+            <div className="bg-neutral-50 p-6 rounded-lg shadow-lg text-left max-w-4xl w-full border border-neutral-200 space-y-4 text-sm">
+                <div>
+                    <h3 className="font-bold text-neutral-800"><span className="text-primary mr-2">1.</span>Apri il file di configurazione</h3>
+                    <p className="ml-6 text-neutral-600">Nel pannello dei file a sinistra, trova e apri il file chiamato <code className="bg-neutral-200/50 text-primary font-mono py-0.5 px-1.5 rounded">googleConfig.ts</code>.</p>
+                </div>
+                <div>
+                    <h3 className="font-bold text-neutral-800"><span className="text-primary mr-2">2.</span>Crea il tuo ID Cliente Google</h3>
+                    <p className="ml-6 text-neutral-600">Segui le istruzioni dettagliate nei commenti di quel file per creare un "ID client OAuth" nella tua Google Cloud Console. Assicurati di aggiungere le <strong className='text-neutral-800'>Origini JavaScript autorizzate</strong> e gli <strong className='text-neutral-800'>URI di reindirizzamento autorizzati</strong> corretti come indicato.</p>
+                     <p className="ml-6 text-neutral-600 mt-2">L'URL da autorizzare per questo ambiente è:</p>
+                     <div className="ml-6 mt-1 flex items-center gap-2">
+                        <code className="bg-neutral-200/50 text-primary font-mono py-1 px-2 rounded-md text-xs">{window.location.origin}</code>
+                        <button onClick={() => copyToClipboard(window.location.origin)} title="Copia URL" className='text-neutral-400 hover:text-primary'><ClipboardIcon className="w-4 h-4" /></button>
+                     </div>
+                </div>
+                 <div>
+                    <h3 className="font-bold text-neutral-800"><span className="text-primary mr-2">3.</span>Incolla il tuo ID Cliente</h3>
+                    <p className="ml-6 text-neutral-600">Sostituisci il valore della costante <code className="bg-neutral-200/50 text-primary font-mono py-0.5 px-1.5 rounded">GOOGLE_CLIENT_ID</code> nel file <code className="bg-neutral-200/50 text-primary font-mono py-0.5 px-1.5 rounded">googleConfig.ts</code> con quello che hai appena creato.</p>
+                </div>
+                 <div>
+                    <h3 className="font-bold text-neutral-800"><span className="text-primary mr-2">4.</span>Ricarica e Accedi</h3>
+                    <p className="ml-6 text-neutral-600">Una volta salvato il file, l'applicazione si ricaricherà automaticamente. Riapri questo pannello e il pulsante "Accedi con Google" sarà pronto per funzionare.</p>
+                </div>
+            </div>
+        </div>
+    );
     
     // --- Render Logic based on Auth State ---
 
+    if (!isGoogleConfigured) {
+        return renderSetupWizard();
+    }
+
     if (!user) {
         return (
-             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
+             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center relative">
                 <h2 className="text-2xl font-bold text-neutral-800 mb-2">Pannello di Amministrazione</h2>
                 <p className="text-neutral-400 mb-6">Accedi con il tuo account Google per gestire le impostazioni.</p>
                 <button
@@ -999,11 +1045,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
                     Accedi con Google
                 </button>
-                 {GOOGLE_CLIENT_ID.startsWith("437487120297") && (
-                    <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
-                       <strong>Nota:</strong> Se l'app è in modalità test nel tuo progetto Google Cloud, assicurati che il tuo account sia aggiunto agli utenti di test per poter accedere.
-                    </div>
-                )}
+                 <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
+                   <strong>Nota:</strong> Se l'app è in modalità test nel tuo progetto Google Cloud, assicurati che il tuo account sia aggiunto agli utenti di test per poter accedere.
+                </div>
                  <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
                     <XIcon className="w-8 h-8"/>
                  </button>
@@ -1013,7 +1057,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     if (!isAdmin) {
          return (
-             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
+             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center relative">
+                <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
+                    <XIcon className="w-8 h-8"/>
+                 </button>
                 <div className="w-16 h-16 bg-red-100 flex items-center justify-center rounded-full mb-4">
                     <XIcon className="w-10 h-10 text-red-500" />
                 </div>
@@ -1027,9 +1074,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 >
                     Logout
                 </button>
-                 <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
-                    <XIcon className="w-8 h-8"/>
-                 </button>
             </div>
         );
     }
@@ -1063,7 +1107,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </nav>
 
             {/* Content */}
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto relative">
+                 <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800 z-10">
+                    <XIcon className="w-8 h-8"/>
+                </button>
                 {activeTab === 'profile' && renderProfileTab()}
                 {activeTab === 'hours' && renderHoursTab()}
                 {activeTab === 'services' && renderServicesTab()}
