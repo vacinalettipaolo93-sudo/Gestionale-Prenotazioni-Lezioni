@@ -72,6 +72,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
     const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
+    const [isLoadingEmail, setIsLoadingEmail] = useState(false);
+    const [emailError, setEmailError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
     const writableCalendars = useMemo(() => {
@@ -116,29 +118,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         }
     }, [isBackendConfigured]);
 
-    // Fetch Google Calendars when backend is configured
+    // Fetch Service Account Email once when backend is configured
     useEffect(() => {
-        const fetchInitialData = async () => {
-             if (isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours')) {
-                // Fetch email
-                if (!serviceAccountEmail) {
-                    try {
-                        const result = await getServiceAccountEmail();
-                        const data = result.data as { email: string };
-                        setServiceAccountEmail(data.email);
-                    } catch (error) {
-                        console.error("Failed to fetch service account email:", error);
-                    }
-                }
-                
-                if (allGoogleCalendars.length === 0) {
-                    fetchCalendars();
-                }
-            }
-        };
+        if (isBackendConfigured && !serviceAccountEmail && !isLoadingEmail) {
+            setIsLoadingEmail(true);
+            setEmailError(null);
+            getServiceAccountEmail()
+                .then(result => {
+                    const data = result.data as { email: string };
+                    setServiceAccountEmail(data.email);
+                })
+                .catch((error: any) => {
+                    console.error("Failed to fetch service account email:", error);
+                    const message = error.message || "Errore sconosciuto.";
+                    setEmailError(`Impossibile caricare l'email del service account. Dettagli: ${message}`);
+                })
+                .finally(() => {
+                    setIsLoadingEmail(false);
+                });
+        }
+    }, [isBackendConfigured, serviceAccountEmail, isLoadingEmail]);
 
-        fetchInitialData();
-    }, [isBackendConfigured, activeTab, serviceAccountEmail, allGoogleCalendars.length, fetchCalendars]);
+    // Fetch Google Calendars when relevant tabs are active
+    useEffect(() => {
+        const shouldFetch = isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
+        
+        if (shouldFetch && allGoogleCalendars.length === 0 && !isLoadingCalendars) {
+            fetchCalendars();
+        }
+    }, [isBackendConfigured, activeTab, allGoogleCalendars.length, fetchCalendars, isLoadingCalendars]);
 
 
     // --- State Update Handlers ---
@@ -775,15 +783,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
                         <span className="font-bold">Copia l'email del Service Account</span>
                         <p className="text-xs text-neutral-400 mt-1 mb-2">Questo è l'indirizzo "robot" che accederà ai tuoi calendari.</p>
-                        {serviceAccountEmail ? (
+                        {isLoadingEmail && (
+                            <div className="flex items-center text-neutral-400 text-xs">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                                Caricamento email...
+                            </div>
+                        )}
+                        {emailError && (
+                             <div className="p-2 bg-red-900/10 text-red-400 text-xs rounded border border-red-400/30">
+                                <strong>Errore:</strong> {emailError}
+                            </div>
+                        )}
+                        {serviceAccountEmail && (
                             <div className="flex items-center gap-2 p-2 bg-neutral-100 rounded">
                                 <code className="text-primary font-mono flex-grow break-all text-xs">{serviceAccountEmail}</code>
-                                <button onClick={handleCopyToClipboard} className="bg-primary text-white px-3 py-1 text-xs font-semibold rounded hover:bg-primary-dark transition-colors flex-shrink-0">
+                                <button 
+                                    onClick={handleCopyToClipboard} 
+                                    disabled={!serviceAccountEmail}
+                                    className="bg-primary text-white px-3 py-1 text-xs font-semibold rounded hover:bg-primary-dark transition-colors flex-shrink-0"
+                                >
                                     {copied ? 'Copiato!' : 'Copia'}
                                 </button>
                             </div>
-                        ) : (
-                            <p className="text-neutral-400 text-xs">Caricamento email in corso...</p>
                         )}
                     </li>
 
@@ -810,6 +831,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             >
                                 {isLoadingCalendars ? 'Caricamento...' : 'Ricarica Calendari'}
                         </button>
+                         <p className="text-xs text-neutral-400 mt-2">
+                            <strong>Nota:</strong> Dopo aver condiviso, potrebbero essere necessari alcuni minuti prima che il calendario appaia qui. Se non lo vedi subito, attendi 1-2 minuti e prova a ricaricare di nuovo.
+                        </p>
                     </li>
                 </ol>
             </div>
