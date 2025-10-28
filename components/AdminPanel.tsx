@@ -100,16 +100,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     const data = result.data as { calendars: GoogleCalendar[] };
                     setAllGoogleCalendars(data.calendars || []);
                 } catch (error: any) {
-                    console.error("Error fetching calendar list:", error);
-                    let detailedMessage = "Impossibile caricare l'elenco dei calendari. Controlla la console per i dettagli.";
+                    console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error);
+                    console.dir(error); // Log the full object for inspection
                     
+                    let detailedMessage = "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
+
                     if (error.code === 'deadline-exceeded') {
-                        detailedMessage = "Il caricamento dei calendari ha richiesto troppo tempo (timeout). Questo accade quasi sempre perché la fatturazione non è abilitata per il progetto Google Cloud. Abilitala e riprova.";
-                    } else {
-                        detailedMessage = error?.details?.serverMessage || error.message;
+                        detailedMessage = "Il server ha impiegato troppo tempo per rispondere (timeout). La causa più comune è un problema di configurazione della fatturazione su Google Cloud o un numero molto elevato di calendari. Prova a ricaricare la pagina.";
+                    } else if (error.details?.serverMessage) {
+                        detailedMessage = `Errore dal server: ${error.details.serverMessage}`;
+                    } else if (error.message) {
+                        detailedMessage = error.message;
                     }
 
-                    setCalendarError(detailedMessage);
+                    setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della console per maggiori dettagli tecnici.`);
                 } finally {
                     setIsLoadingCalendars(false);
                 }

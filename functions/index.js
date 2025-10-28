@@ -90,25 +90,15 @@ exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) 
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
-        let allCalendars = [];
-        let pageToken = null;
-        
-        // Loop per gestire la paginazione e recuperare tutti i calendari disponibili.
-        do {
-            const res = await calendar.calendarList.list({
-                maxResults: 250, // Massimo consentito per pagina
-                pageToken: pageToken,
-                // Richiedi solo i campi necessari per ridurre la dimensione del payload
-                fields: 'items(id,summary,accessRole),nextPageToken',
-            });
+        // OTTIMIZZAZIONE: Carica solo la prima pagina di risultati (fino a 250) per evitare timeout
+        // su account con un numero molto elevato di calendari. Questo è il fix principale per il
+        // problema del caricamento infinito.
+        const res = await calendar.calendarList.list({
+            maxResults: 250,
+            fields: 'items(id,summary,accessRole)', // Non serve 'nextPageToken' perché non paginiamo.
+        });
 
-            if (res.data.items) {
-                allCalendars = allCalendars.concat(res.data.items);
-            }
-            pageToken = res.data.nextPageToken;
-        } while (pageToken);
-
-        return { calendars: allCalendars };
+        return { calendars: res.data.items || [] };
     } catch (error) {
         handleApiError(error, 'getGoogleCalendarList');
     }
