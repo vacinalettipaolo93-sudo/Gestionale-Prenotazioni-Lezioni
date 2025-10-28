@@ -121,7 +121,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         };
 
         fetchCalendars();
-    }, [isBackendConfigured, activeTab, allGoogleCalendars]);
+    }, [isBackendConfigured, activeTab]);
 
 
     // --- State Update Handlers ---

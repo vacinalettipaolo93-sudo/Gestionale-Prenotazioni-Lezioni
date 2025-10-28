@@ -41,7 +41,8 @@ const getAuthenticatedClient = async () => {
 
 const handleApiError = (error, functionName) => {
     // Log the full error for server-side debugging, which is crucial.
-    console.error(`Errore dettagliato in ${functionName}:`, util.inspect(error, {depth: 5}));
+    // Using console.error directly is safer than util.inspect for complex error objects.
+    console.error(`ERRORE IN ${functionName}:`, error);
 
     // Attempt to extract the most specific error message from the Google API response.
     let specificMessage = "Si è verificato un errore imprevisto sul server.";
@@ -90,15 +91,16 @@ exports.getGoogleCalendarList = onCall({ timeoutSeconds: 120 }, async (request) 
         const authClient = await getAuthenticatedClient();
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
-        // OTTIMIZZAZIONE: Carica solo la prima pagina di risultati (fino a 250) per evitare timeout
-        // su account con un numero molto elevato di calendari. Questo è il fix principale per il
-        // problema del caricamento infinito.
         const res = await calendar.calendarList.list({
             maxResults: 250,
-            fields: 'items(id,summary,accessRole)', // Non serve 'nextPageToken' perché non paginiamo.
+            fields: 'items(id,summary,accessRole)',
         });
+        
+        // FIX: Aggiunto controllo di robustezza. Se la risposta da Google non ha la struttura attesa,
+        // restituisce un array vuoto invece di causare un crash.
+        const calendars = (res.data && res.data.items) ? res.data.items : [];
+        return { calendars: calendars };
 
-        return { calendars: res.data.items || [] };
     } catch (error) {
         handleApiError(error, 'getGoogleCalendarList');
     }
