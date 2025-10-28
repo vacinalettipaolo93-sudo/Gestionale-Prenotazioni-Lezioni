@@ -109,7 +109,21 @@ exports.checkGoogleAuthStatus = onCall(async (request) => {
         }
     } catch (error) {
         console.error("Google Auth status check failed:", error);
-        return { isConfigured: false, error: error.message };
+        
+        // Extract a more detailed error message, similar to handleApiError
+        let specificMessage = error.message || "An unexpected error occurred during auth status check.";
+        if (error.response?.data?.error?.message) {
+            specificMessage = error.response.data.error.message;
+        } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+            specificMessage = error.errors.map((e) => e.message).join('; ');
+        }
+        
+        // Add context for common issues
+        if (specificMessage.includes("API has not been used") || specificMessage.includes("is disabled")) {
+            specificMessage = "L'API di Google Calendar non è abilitata per questo progetto Google Cloud. Segui il link nella guida per abilitarla. Dettagli: " + specificMessage;
+        }
+
+        return { isConfigured: false, error: specificMessage };
     }
 });
 

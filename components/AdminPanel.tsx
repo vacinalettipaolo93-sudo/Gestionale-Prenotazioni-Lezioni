@@ -132,10 +132,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => {
         const shouldFetch = isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
         
-        if (shouldFetch && allGoogleCalendars.length === 0 && !isLoadingCalendars) {
+        // Fetch if the tab is relevant and we haven't successfully fetched calendars yet.
+        if (shouldFetch && allGoogleCalendars.length === 0 && !isLoadingCalendars && !calendarError) {
             fetchCalendars();
         }
-    }, [isBackendConfigured, activeTab, allGoogleCalendars.length, fetchCalendars, isLoadingCalendars]);
+    }, [isBackendConfigured, activeTab, allGoogleCalendars.length, fetchCalendars, isLoadingCalendars, calendarError]);
 
 
     // --- State Update Handlers ---
@@ -886,22 +887,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                         </div>
                     ) : (
-                        <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
-                            {allGoogleCalendars.map(cal => (
-                                <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedCalendarIds.includes(cal.id)}
-                                    onChange={() => handleCalendarSelectionChange(cal.id)}
-                                    className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
-                                />
-                                <span className="ml-3 text-neutral-600">{cal.summary}</span>
-                                { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
-                                    <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
-                                }
-                                </label>
-                            ))}
-                        </div>
+                        <>
+                            <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
+                                {allGoogleCalendars.length > 0 ? (
+                                    allGoogleCalendars.map(cal => (
+                                        <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedCalendarIds.includes(cal.id)}
+                                            onChange={() => handleCalendarSelectionChange(cal.id)}
+                                            className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
+                                        />
+                                        <span className="ml-3 text-neutral-600">{cal.summary}</span>
+                                        { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
+                                            <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
+                                        }
+                                        </label>
+                                    ))
+                                ) : (
+                                    <div className="text-center p-4">
+                                        <p className="font-semibold text-neutral-800">Nessun calendario trovato</p>
+                                        <p className="text-sm text-neutral-400 mt-1">
+                                            La connessione a Google ha funzionato, ma non abbiamo trovato calendari. Assicurati di aver condiviso almeno un calendario con l'email del Service Account e attendi qualche minuto per la sincronizzazione.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            {allGoogleCalendars.length > 0 && writableCalendars.length === 0 && (
+                                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-800 text-sm">
+                                    <p><span className="font-bold">Attenzione:</span> Hai condiviso dei calendari, ma a nessuno di essi è stato concesso il permesso di <strong className="font-bold">"Apportare modifiche agli eventi"</strong>. L'app potrà solo leggere la disponibilità, ma non potrà creare nuove prenotazioni.</p>
+                                </div>
+                            )}
+                        </>
                     )}
                     
                     <div className="mt-6 text-right">
