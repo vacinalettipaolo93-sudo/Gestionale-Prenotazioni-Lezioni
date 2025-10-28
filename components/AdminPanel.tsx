@@ -763,9 +763,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     
     const renderIntegrationsTab = () => {
+        const shouldShowSetup = !isBackendConfigured || (isBackendConfigured && !isLoadingCalendars && writableCalendars.length === 0);
 
         const renderSetupInstructions = () => (
-            <div className="p-6 bg-neutral-100 border border-neutral-200 rounded-lg text-sm">
+            <div className="mt-6 p-6 bg-neutral-100 border border-neutral-200 rounded-lg text-sm">
                 <p className="font-semibold text-xl text-neutral-800 mb-4">Configura l'integrazione con Google Calendar</p>
                 <p className="text-neutral-400 mb-6">Per permettere a questa applicazione di leggere la tua disponibilità e creare eventi, devi condividere i tuoi calendari di Google Calendar con il suo Service Account. Segui questi passaggi:</p>
                 
@@ -839,24 +840,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
                 <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
                 
-                { !isBackendConfigured && renderSetupInstructions() }
-
-                { isBackendConfigured && (
-                <div>
-                    <div className="flex justify-between items-center mb-6 p-4 bg-green-900/10 border border-green-400/30 rounded-lg">
-                        <div className="flex items-center">
-                            <CheckIcon className="w-6 h-6 text-green-400 mr-3" />
-                            <p className="text-green-400 font-semibold">Configurazione backend attiva e connessa a Google.</p>
-                        </div>
-                         <button 
-                            onClick={onRefreshAuthStatus} 
-                            className="text-sm text-primary hover:underline disabled:text-neutral-400 disabled:no-underline"
-                            disabled={isCheckingAuth}
-                        >
-                            {isCheckingAuth ? 'Verifica...' : 'Verifica Stato'}
-                        </button>
+                <div className="flex justify-between items-center mb-6 p-4 bg-neutral-100 border border-neutral-200 rounded-lg">
+                    <div className="flex items-center">
+                        {isBackendConfigured ? 
+                            <CheckIcon className="w-6 h-6 text-green-400 mr-3" /> :
+                            <InformationCircleIcon className="w-6 h-6 text-amber-500 mr-3" />
+                        }
+                        <p className={`font-semibold ${isBackendConfigured ? 'text-green-400' : 'text-amber-500'}`}>
+                            {isBackendConfigured ? 'Configurazione backend attiva e connessa a Google.' : 'Configurazione backend non attiva.'}
+                        </p>
                     </div>
-                    
+                     <button 
+                        onClick={onRefreshAuthStatus} 
+                        className="text-sm text-primary hover:underline disabled:text-neutral-400 disabled:no-underline"
+                        disabled={isCheckingAuth}
+                    >
+                        {isCheckingAuth ? 'Verifica...' : 'Verifica Stato'}
+                    </button>
+                </div>
+
+                { shouldShowSetup && renderSetupInstructions() }
+
+                { isBackendConfigured && !shouldShowSetup && (
+                <div>
                     <h4 className="font-semibold text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
                     <p className="text-sm text-neutral-400 mb-4">
                         Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
@@ -879,7 +885,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 Riprova
                             </button>
                         </div>
-                    ) : writableCalendars.length > 0 ? (
+                    ) : (
                         <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
                             {allGoogleCalendars.map(cal => (
                                 <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
@@ -896,11 +902,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </label>
                             ))}
                         </div>
-                    ) : (
-                        renderSetupInstructions()
                     )}
                     
-                    { writableCalendars.length > 0 && <div className="mt-6 text-right">
+                    <div className="mt-6 text-right">
                         <button 
                             onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
                             disabled={isLoadingCalendars}
@@ -908,7 +912,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         >
                             Salva Calendari Selezionati
                         </button>
-                    </div> }
+                    </div>
                 </div>
                 )}
             </div>
