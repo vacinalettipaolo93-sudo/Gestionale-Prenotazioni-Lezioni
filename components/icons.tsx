@@ -133,9 +133,3 @@ export const ArrowLeftOnRectangleIcon: React.FC<React.SVGProps<SVGSVGElement>> =
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m-3 0l-3-3m0 0l3-3m-3 3h12.75" />
     </Icon>
 );
-
-export const ClipboardIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <Icon {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-    </Icon>
-);
