@@ -100,9 +100,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     const data = result.data as { calendars: GoogleCalendar[] };
                     setAllGoogleCalendars(data.calendars || []);
                 } catch (error: any) {
-                     console.error("Error fetching calendar list:", error);
-                    const serverMessage = error?.details?.serverMessage || error.message;
-                    setCalendarError(serverMessage || "Impossibile caricare l'elenco dei calendari. Controlla la configurazione e la condivisione del calendario.");
+                    console.error("Error fetching calendar list:", error);
+                    let detailedMessage = "Impossibile caricare l'elenco dei calendari. Controlla la console per i dettagli.";
+                    
+                    if (error.code === 'deadline-exceeded') {
+                        detailedMessage = "Il caricamento dei calendari ha richiesto troppo tempo (timeout). Questo accade quasi sempre perché la fatturazione non è abilitata per il progetto Google Cloud. Abilitala e riprova.";
+                    } else {
+                        detailedMessage = error?.details?.serverMessage || error.message;
+                    }
+
+                    setCalendarError(detailedMessage);
                 } finally {
                     setIsLoadingCalendars(false);
                 }

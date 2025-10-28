@@ -28,11 +28,11 @@ const firestore = firebase.firestore;
 const functions = firebase.app().functions('us-central1');
 const auth = firebase.auth();
 
-// Funzioni callable
-const checkGoogleAuthStatus = functions.httpsCallable('checkGoogleAuthStatus');
-const getGoogleCalendarList = functions.httpsCallable('getGoogleCalendarList');
-const getGoogleCalendarAvailability = functions.httpsCallable('getGoogleCalendarAvailability');
-const createGoogleCalendarEvent = functions.httpsCallable('createGoogleCalendarEvent');
+// Funzioni callable con timeout
+const checkGoogleAuthStatus = functions.httpsCallable('checkGoogleAuthStatus', { timeout: 30000 }); // 30s
+const getGoogleCalendarList = functions.httpsCallable('getGoogleCalendarList', { timeout: 60000 }); // 60s
+const getGoogleCalendarAvailability = functions.httpsCallable('getGoogleCalendarAvailability', { timeout: 60000 }); // 60s
+const createGoogleCalendarEvent = functions.httpsCallable('createGoogleCalendarEvent', { timeout: 60000 }); // 60s
 
 
 export { 
