@@ -4,31 +4,18 @@ import 'firebase/compat/firestore';
 import 'firebase/compat/functions';
 import 'firebase/compat/auth';
 
-// --- ISTRUZIONI IMPORTANTI ---
-// DEVI CREARE un file chiamato `.env.local` nella cartella principale del progetto (la stessa di `package.json`).
-// Questo file è essenziale per far funzionare l'applicazione in locale.
-// Vite caricherà automaticamente queste variabili.
-//
-// Copia e incolla il seguente contenuto nel tuo file .env.local e sostituisci i valori
-// con le tue credenziali reali che trovi nella console di Firebase:
-//
-// VITE_FIREBASE_API_KEY="AIza..."
-// VITE_FIREBASE_AUTH_DOMAIN="tuo-progetto.firebaseapp.com"
-// VITE_FIREBASE_DATABASE_URL="https://tuo-progetto.firebaseio.com"
-// VITE_FIREBASE_PROJECT_ID="tuo-progetto"
-// VITE_FIREBASE_STORAGE_BUCKET="tuo-progetto.appspot.com"
-// VITE_FIREBASE_MESSAGING_SENDER_ID="1234567890"
-// VITE_FIREBASE_APP_ID="1:1234567890:web:..."
-
+// --- CONFIGURAZIONE FIREBASE ---
+// I valori di configurazione sono stati inseriti direttamente in questo file.
 const firebaseConfig = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env?.VITE_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID
+  apiKey: "AIzaSyBs_cE6smOR1qvSpoc24kDY4uTRtQclPdQ",
+  authDomain: "gestionale-prenotazioni-lezio.firebaseapp.com",
+  databaseURL: "https://gestionale-prenotazioni-lezio-default-rtdb.firebaseio.com",
+  projectId: "gestionale-prenotazioni-lezio",
+  storageBucket: "gestionale-prenotazioni-lezio.appspot.com",
+  messagingSenderId: "437487120297",
+  appId: "1:437487120297:web:30895af62079b5301a1eb8"
 };
+
 
 export const isFirebaseConfigValid = !!firebaseConfig.apiKey;
 
@@ -63,9 +50,10 @@ if (isFirebaseConfigValid) {
     getServiceAccountEmail = functions.httpsCallable('getServiceAccountEmail');
 } else {
     // Only show this error in development to avoid console noise in production
-    // @ts-ignore - import.meta.env is a Vite specific feature
-    if (import.meta.env?.DEV) {
-        console.error("Errore critico: la configurazione di Firebase non è stata trovata. Assicurati di aver creato un file .env.local con le tue chiavi VITE_FIREBASE_... come descritto in firebaseConfig.ts");
+    // FIX: The Vite client types seem to be unavailable, causing a type error on `import.meta.env`.
+    // Using a type assertion as a workaround.
+    if ((import.meta as any).env.DEV) {
+        console.error("Errore critico: la configurazione di Firebase non è valida o è mancante in firebaseConfig.ts");
     }
 }
 
