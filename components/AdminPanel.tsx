@@ -92,8 +92,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
     // --- State for Google OAuth 2.0 Integration ---
-    const [isGapiLoaded, setIsGapiLoaded] = useState(false);
-    const [isGisLoaded, setIsGisLoaded] = useState(false);
+    const [googleScriptsState, setGoogleScriptsState] = useState<'loading' | 'ready' | 'error'>('loading');
     const [googleTokenClient, setGoogleTokenClient] = useState<any>(null);
     const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(localStorage.getItem('google_access_token'));
     
@@ -121,41 +120,74 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     // --- Google API Initialization ---
     useEffect(() => {
-        // This effect uses a polling mechanism to robustly detect when the Google API scripts
-        // have loaded, avoiding race conditions that can occur with simple 'load' event listeners.
-        
-        let gapiInitialized = false;
-        let gisInitialized = false;
+        // This effect uses a robust polling and callback mechanism to ensure
+        // Google's API scripts are fully loaded and initialized in the correct order.
         
         const intervalId = setInterval(() => {
-            // Check for GAPI (for user info)
-            if (!gapiInitialized && window.gapi && window.gapi.load) {
-                window.gapi.load('client', () => {
-                    console.log("Google API client library initialized.");
-                    setIsGapiLoaded(true);
+            // Wait for both GAPI (for user info) and GIS (for auth) to be available
+            if (window.gapi && window.google?.accounts?.oauth2) {
+                clearInterval(intervalId); // Stop polling
+
+                // Initialize GAPI client library first
+                window.gapi.load('client:oauth2', () => {
+                    console.log("GAPI client and oauth2 libraries initialized.");
+                    
+                    // Now that GAPI is ready, initialize the GIS Token Client
+                    try {
+                        const client = window.google.accounts.oauth2.initTokenClient({
+                            client_id: GOOGLE_CLIENT_ID,
+                            scope: GOOGLE_API_SCOPES,
+                            callback: (tokenResponse: any) => {
+                                if (tokenResponse.error) {
+                                    console.error("Google Auth Error:", tokenResponse);
+                                    let message = 'Errore durante l\'autenticazione con Google.';
+                                    if (tokenResponse.error === 'access_denied') {
+                                        message = 'Accesso negato. Se l\'app è in modalità test, assicurati che il tuo account sia aggiunto agli utenti di test nel tuo progetto Google Cloud.';
+                                    } else if (tokenResponse.error_description) {
+                                        message = tokenResponse.error_description;
+                                    }
+                                    showToast(message, 'error');
+                                    return;
+                                }
+
+                                if (tokenResponse.access_token) {
+                                    setGoogleAccessToken(tokenResponse.access_token);
+                                    localStorage.setItem('google_access_token', tokenResponse.access_token);
+                            
+                                    // Fetch user info after getting token
+                                    window.gapi.client.oauth2.userinfo.get()
+                                    .then((userInfo: any) => {
+                                        onGoogleLogin({
+                                            email: userInfo.result.email,
+                                            name: userInfo.result.name,
+                                            picture: userInfo.result.picture,
+                                        });
+                                        showToast('Login riuscito!', 'success');
+                                    }).catch((error: any) => {
+                                        console.error("Error fetching user info:", error);
+                                        showToast('Errore nel recupero delle info utente.', 'error');
+                                    });
+                                }
+                            },
+                        });
+                        setGoogleTokenClient(client);
+                        setGoogleScriptsState('ready'); // Signal that everything is ready
+                    } catch (error) {
+                        console.error("Error initializing Google Token Client:", error);
+                        showToast("Impossibile inizializzare l'autenticazione Google.", "error");
+                        setGoogleScriptsState('error');
+                    }
                 });
-                gapiInitialized = true;
             }
-
-            // Check for GIS (for auth)
-            if (!gisInitialized && window.google && window.google.accounts) {
-                console.log("Google Identity Services library loaded.");
-                setIsGisLoaded(true);
-                gisInitialized = true;
-            }
-
-            // If both are loaded, stop polling
-            if (gapiInitialized && gisInitialized) {
-                clearInterval(intervalId);
-            }
-        }, 100);
+        }, 150);
 
         // Set a timeout to prevent the interval from running indefinitely
         const timeoutId = setTimeout(() => {
             clearInterval(intervalId);
-            if (!gapiInitialized || !gisInitialized) {
+            if (googleScriptsState === 'loading') {
                 console.error("Timeout: Google API scripts did not load within 10 seconds.");
                 showToast("Errore di caricamento dei servizi Google. Per favore, ricarica la pagina.", 'error');
+                setGoogleScriptsState('error');
             }
         }, 10000);
 
@@ -164,55 +196,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             clearInterval(intervalId);
             clearTimeout(timeoutId);
         };
-    }, [showToast]); // Dependency on showToast as it's used in the effect
-    
-    useEffect(() => {
-        if (isGapiLoaded && isGisLoaded && !googleTokenClient) {
-            try {
-                const client = window.google.accounts.oauth2.initTokenClient({
-                    client_id: GOOGLE_CLIENT_ID,
-                    scope: GOOGLE_API_SCOPES,
-                    callback: (tokenResponse: any) => {
-                        if (tokenResponse.error) {
-                            console.error("Google Auth Error:", tokenResponse);
-                            let message = 'Errore durante l\'autenticazione con Google.';
-                            if (tokenResponse.error === 'access_denied') {
-                                message = 'Accesso negato. Se l\'app è in modalità test, assicurati che il tuo account sia aggiunto agli utenti di test nel tuo progetto Google Cloud.';
-                            } else if (tokenResponse.error_description) {
-                                message = tokenResponse.error_description;
-                            }
-                            showToast(message, 'error');
-                            return;
-                        }
-
-                        if (tokenResponse.access_token) {
-                            setGoogleAccessToken(tokenResponse.access_token);
-                            localStorage.setItem('google_access_token', tokenResponse.access_token);
-                    
-                            // Fetch user info after getting token
-                            window.gapi.client.init({}).then(() => {
-                                return window.gapi.client.oauth2.userinfo.get();
-                            }).then((userInfo: any) => {
-                                onGoogleLogin({
-                                    email: userInfo.result.email,
-                                    name: userInfo.result.name,
-                                    picture: userInfo.result.picture,
-                                });
-                                showToast('Login riuscito!', 'success');
-                            }).catch((error: any) => {
-                                console.error("Error fetching user info:", error);
-                                showToast('Errore nel recupero delle info utente.', 'error');
-                            });
-                        }
-                    },
-                });
-                setGoogleTokenClient(client);
-            } catch (error) {
-                console.error("Error initializing Google Token Client:", error);
-                showToast("Impossibile inizializzare l'autenticazione Google.", "error");
-            }
-        }
-    }, [isGapiLoaded, isGisLoaded, showToast, onGoogleLogin, googleTokenClient]);
+    }, []); // Run only once on component mount
 
 
     const fetchCalendars = useCallback(async () => {
@@ -1061,17 +1045,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <p className="text-neutral-400 mb-6">Accedi con il tuo account Google per gestire le impostazioni.</p>
                 <button
                     onClick={handleGoogleConnect}
-                    disabled={!isGapiLoaded || !isGisLoaded || !googleTokenClient}
+                    disabled={googleScriptsState !== 'ready'}
                     className="bg-blue-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-600 transition-colors disabled:bg-neutral-200 disabled:cursor-not-allowed flex items-center gap-3"
                 >
-                    {/* Fix: Corrected a typo in the SVG closing tag from </psvg> to </path></svg> */}
                     <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
                     Accedi con Google
                 </button>
-                 {(!isGapiLoaded || !isGisLoaded || !googleTokenClient) && (
+                 {googleScriptsState === 'loading' && (
                     <p className="text-xs text-neutral-400 mt-4 animate-pulse">
                         Inizializzazione dei servizi Google in corso...
                     </p>
+                )}
+                 {googleScriptsState === 'error' && (
+                     <p className="text-xs text-red-500 mt-4">
+                        Impossibile caricare i servizi Google. Prova a ricaricare la pagina.
+                     </p>
                 )}
                  {GOOGLE_CLIENT_ID.startsWith("IL_TUO") && (
                     <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
