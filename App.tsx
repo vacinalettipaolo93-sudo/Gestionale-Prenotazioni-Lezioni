@@ -49,13 +49,15 @@ function App() {
   
   // Check if logged in user is an admin
   useEffect(() => {
-    if (googleUser && adminEmails.length > 0) {
+    if (googleUser && adminEmails) {
         setIsAdmin(adminEmails.includes(googleUser.email));
     } else {
         setIsAdmin(false);
     }
   }, [googleUser, adminEmails]);
 
+
+  const configDocRef = db ? doc(db, 'configuration', 'main') : null;
 
   // --- FIREBASE REALTIME DATA ---
   useEffect(() => {
@@ -64,9 +66,7 @@ function App() {
         return;
     }
 
-    const configRef = doc(db, 'configuration', 'main');
-
-    const unsubscribe = onSnapshot(configRef, async (docSnap) => {
+    const unsubscribe = onSnapshot(configDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as AppConfig;
         setSportsData(data.sportsData);
@@ -87,10 +87,10 @@ function App() {
           slotInterval: INITIAL_SLOT_INTERVAL,
           minimumNoticeHours: INITIAL_MINIMUM_NOTICE_HOURS,
           googleCalendarIds: [],
-          adminEmails: ['esempio@admin.com'], // Add a default admin for initial setup
+          adminEmails: [], // Start with no admins. The first user to log in will be added.
         };
         try {
-          await setDoc(configRef, initialConfig);
+          await setDoc(configDocRef, initialConfig);
           console.log("Successfully initialized configuration in Firestore.");
         } catch (error) {
           console.error("Error initializing Firestore configuration:", error);
@@ -105,7 +105,7 @@ function App() {
     });
 
     return () => unsubscribe();
-  }, [isLoadingConfig]);
+  }, [isLoadingConfig, configDocRef]);
   
   // --- NAVIGATION HANDLERS ---
   const handleSelectionComplete = (selection: LessonSelection) => {
@@ -131,8 +131,6 @@ function App() {
     setBackgroundSport(null);
   };
     
-  const configDocRef = db ? doc(db, 'configuration', 'main') : null;
-
   const handleSaveWorkingHours = async (newHours: WorkingHours) => {
     if (!configDocRef) return;
     try {
@@ -210,8 +208,31 @@ function App() {
     }
   };
 
-   const handleGoogleLogin = (user: GoogleUser) => {
+  const handleSaveAdminEmails = async (newEmails: string[]) => {
+    if (!configDocRef) return;
+    try {
+      await updateDoc(configDocRef, { adminEmails: newEmails });
+      showToast('Lista amministratori aggiornata!', 'success');
+    } catch (error) {
+      console.error("Error saving admin emails:", error);
+      showToast("Errore nel salvataggio della lista amministratori.", 'error');
+    }
+  };
+
+   const handleGoogleLogin = async (user: GoogleUser) => {
     setGoogleUser(user);
+    // Check if this is the first admin setup
+    if (adminEmails.length === 0 && configDocRef) {
+        try {
+            // Automatically make the first logged-in user an admin
+            await updateDoc(configDocRef, { adminEmails: [user.email] });
+            showToast(`Benvenuto! ${user.name} è stato impostato come primo amministratore.`, 'success');
+            // The onSnapshot listener will update the local adminEmails state automatically.
+        } catch (error) {
+            console.error("Error setting first admin:", error);
+            showToast("Errore nell'impostazione del primo amministratore.", 'error');
+        }
+    }
    }
 
    const handleGoogleLogout = () => {
@@ -309,6 +330,7 @@ function App() {
               initialSlotInterval={slotInterval}
               initialMinimumNoticeHours={minimumNoticeHours}
               initialSelectedCalendarIds={selectedCalendarIds}
+              initialAdminEmails={adminEmails}
               onSaveSportsData={handleSaveSportsData}
               onSaveWorkingHours={handleSaveWorkingHours}
               onSaveDateOverrides={handleSaveDateOverrides}
@@ -316,6 +338,7 @@ function App() {
               onSaveSlotInterval={handleSaveSlotInterval}
               onSaveMinimumNoticeHours={handleSaveMinimumNoticeHours}
               onSaveSelectedCalendars={handleSaveSelectedCalendars}
+              onSaveAdminEmails={handleSaveAdminEmails}
               showToast={showToast}
             />
         </div>

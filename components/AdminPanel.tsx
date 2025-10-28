@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, InformationCircleIcon } from './icons';
@@ -37,6 +38,7 @@ interface AdminPanelProps {
     initialSlotInterval: number;
     initialMinimumNoticeHours: number;
     initialSelectedCalendarIds: string[];
+    initialAdminEmails: string[];
     onSaveWorkingHours: (newHours: WorkingHours) => void;
     onSaveDateOverrides: (newOverrides: DateOverrides) => void;
     onSaveSportsData: (newSports: Sport[]) => void;
@@ -44,6 +46,7 @@ interface AdminPanelProps {
     onSaveSlotInterval: (newInterval: number) => void;
     onSaveMinimumNoticeHours: (newNotice: number) => void;
     onSaveSelectedCalendars: (calendarIds: string[]) => void;
+    onSaveAdminEmails: (emails: string[]) => void;
     onExitAdminView: () => void;
     showToast: (message: string, type: 'success' | 'error') => void;
 }
@@ -60,6 +63,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     initialSlotInterval,
     initialMinimumNoticeHours,
     initialSelectedCalendarIds,
+    initialAdminEmails,
     onSaveWorkingHours,
     onSaveDateOverrides,
     onSaveSportsData,
@@ -67,6 +71,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onSaveSlotInterval,
     onSaveMinimumNoticeHours,
     onSaveSelectedCalendars,
+    onSaveAdminEmails,
     onExitAdminView,
     showToast,
 }) => {
@@ -77,6 +82,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [slotInterval, setSlotInterval] = useState<number>(initialSlotInterval);
     const [minimumNoticeHours, setMinimumNoticeHours] = useState<number>(initialMinimumNoticeHours);
     const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(initialSelectedCalendarIds);
+    const [localAdminEmails, setLocalAdminEmails] = useState<string[]>(initialAdminEmails);
+    const [newAdminEmail, setNewAdminEmail] = useState('');
     
     const [activeTab, setActiveTab] = useState('profile');
 
@@ -111,6 +118,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setSlotInterval(initialSlotInterval), [initialSlotInterval]);
     useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
+    useEffect(() => setLocalAdminEmails(initialAdminEmails), [initialAdminEmails]);
 
     // --- Google API Initialization ---
     useEffect(() => {
@@ -954,11 +962,90 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         );
     };
 
+    const handleAddAdmin = (e: React.FormEvent) => {
+        e.preventDefault();
+        const emailToAdd = newAdminEmail.trim().toLowerCase();
+        if (emailToAdd && /^\S+@\S+\.\S+$/.test(emailToAdd)) { // Basic email validation
+            if (localAdminEmails.includes(emailToAdd)) {
+                showToast('Questo utente è già un amministratore.', 'error');
+                return;
+            }
+            const updatedEmails = [...localAdminEmails, emailToAdd];
+            onSaveAdminEmails(updatedEmails);
+            setNewAdminEmail('');
+        } else {
+            showToast('Inserisci un indirizzo email valido.', 'error');
+        }
+    };
+
+    const handleRemoveAdmin = (emailToRemove: string) => {
+        if (localAdminEmails.length <= 1) {
+            showToast("Non puoi rimuovere l'unico amministratore.", 'error');
+            return;
+        }
+        if (emailToRemove === user?.email) {
+            showToast('Non puoi rimuovere te stesso.', 'error');
+            return;
+        }
+        const updatedEmails = localAdminEmails.filter(email => email !== emailToRemove);
+        onSaveAdminEmails(updatedEmails);
+    };
+
+    const renderAdminsTab = () => (
+        <div className="p-6 max-w-2xl mx-auto">
+            <h3 className="text-xl font-semibold mb-2 text-neutral-800">Gestione Amministratori</h3>
+            <p className="text-sm text-neutral-400 mb-6">Aggiungi o rimuovi utenti che possono accedere a questo pannello di amministrazione.</p>
+            
+            <div className="bg-neutral-50 p-6 rounded-lg border border-neutral-200 mb-6">
+                <h4 className="font-semibold text-lg text-neutral-800 mb-4">Aggiungi nuovo amministratore</h4>
+                <form onSubmit={handleAddAdmin} className="flex items-center gap-4">
+                    <div className="relative flex-grow">
+                        <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <input
+                            type="email"
+                            placeholder="email@esempio.com"
+                            value={newAdminEmail}
+                            onChange={(e) => setNewAdminEmail(e.target.value)}
+                            className="w-full pl-10 p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
+                        />
+                    </div>
+                    <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 flex items-center">
+                        <PlusIcon className="w-5 h-5 mr-1"/> Aggiungi
+                    </button>
+                </form>
+            </div>
+
+            <div className="bg-neutral-50 p-6 rounded-lg border border-neutral-200">
+                <h4 className="font-semibold text-lg text-neutral-800 mb-4">Amministratori attuali</h4>
+                <div className="space-y-3">
+                    {localAdminEmails.map((email) => (
+                        <div key={email} className="flex items-center justify-between p-3 bg-neutral-100 border border-neutral-200 rounded-md">
+                            <div className="flex items-center gap-3">
+                                <img src={user?.email === email ? user.picture : `https://i.pravatar.cc/150?u=${email}`} alt={email} className="w-8 h-8 rounded-full" />
+                                <span className="font-medium text-neutral-800">{email}</span>
+                                {user?.email === email && <span className="text-xs text-primary bg-primary-text px-2 py-1 rounded-full">(Tu)</span>}
+                            </div>
+                            <button 
+                                onClick={() => handleRemoveAdmin(email)}
+                                disabled={localAdminEmails.length <= 1 || user?.email === email}
+                                className="text-neutral-400 hover:text-red-500 disabled:text-neutral-200 disabled:cursor-not-allowed"
+                                title={localAdminEmails.length <= 1 ? "Impossibile rimuovere l'unico admin" : user?.email === email ? "Non puoi rimuovere te stesso" : "Rimuovi admin"}
+                            >
+                                <TrashIcon className="w-5 h-5"/>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+
     const tabs = [
         { id: 'profile', label: 'Profilo' },
         { id: 'hours', label: 'Orari e Disponibilità' },
         { id: 'services', label: 'Servizi' },
-        { id: 'integrations', label: 'Integrazioni'}
+        { id: 'integrations', label: 'Integrazioni'},
+        { id: 'admins', label: 'Amministratori' }
     ];
     
     // --- Render Logic based on Auth State ---
@@ -997,7 +1084,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!isAdmin) {
          return (
              <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
-                <InformationCircleIcon className="w-16 h-16 text-red-500 mb-4" />
+                <div className="w-16 h-16 bg-red-100 flex items-center justify-center rounded-full mb-4">
+                    <XIcon className="w-10 h-10 text-red-500" />
+                </div>
                 <h2 className="text-2xl font-bold text-neutral-800 mb-2">Accesso Negato</h2>
                 <p className="text-neutral-400 mb-6 max-w-md">
                     L'account <strong className="text-neutral-600">{user?.email}</strong> non è autorizzato ad accedere a questa sezione. Contatta l'amministratore per richiedere l'accesso.
@@ -1049,6 +1138,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {activeTab === 'hours' && renderHoursTab()}
                 {activeTab === 'services' && renderServicesTab()}
                 {activeTab === 'integrations' && renderIntegrationsTab()}
+                {activeTab === 'admins' && renderAdminsTab()}
             </main>
         </div>
     );
