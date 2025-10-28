@@ -1,16 +1,22 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
 import ConfirmationPage from './components/ConfirmationPage';
 import AdminPanel from './components/AdminPanel';
-import LoginModal from './components/LoginModal';
 import BackgroundIcon from './components/BackgroundIcon';
 import Toast from './components/Toast';
 import { CogIcon, InformationCircleIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { db, checkGoogleAuthStatus, auth, isFirebaseConfigValid } from './firebaseConfig';
+import { db, isFirebaseConfigValid } from './firebaseConfig';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+
+interface GoogleUser {
+    email: string;
+    name: string;
+    picture: string;
+}
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
@@ -27,35 +33,42 @@ function App() {
   const [slotInterval, setSlotInterval] = useState(INITIAL_SLOT_INTERVAL);
   const [minimumNoticeHours, setMinimumNoticeHours] = useState(INITIAL_MINIMUM_NOTICE_HOURS);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
+  const [adminEmails, setAdminEmails] = useState<string[]>([]);
 
-  // Auth state
-  const [isBackendConfigured, setIsBackendConfigured] = useState(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Admin View State
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // UI State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 5000); // Nascondi dopo 5 secondi
   };
   
+  // Check if logged in user is an admin
+  useEffect(() => {
+    if (googleUser && adminEmails.length > 0) {
+        setIsAdmin(adminEmails.includes(googleUser.email));
+    } else {
+        setIsAdmin(false);
+    }
+  }, [googleUser, adminEmails]);
+
 
   // --- FIREBASE REALTIME DATA ---
   useEffect(() => {
-    if (!isFirebaseConfigValid) {
+    if (!isFirebaseConfigValid || !db) {
         setIsLoadingConfig(false);
         return;
     }
 
-    const configRef = db.collection('configuration').doc('main');
+    const configRef = doc(db, 'configuration', 'main');
 
-    const unsubscribe = configRef.onSnapshot(async (doc) => {
-      if (doc.exists) {
-        const data = doc.data() as AppConfig;
+    const unsubscribe = onSnapshot(configRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as AppConfig;
         setSportsData(data.sportsData);
         setConsultantInfo(data.consultantInfo);
         setWorkingHours(data.workingHours);
@@ -63,6 +76,7 @@ function App() {
         setSlotInterval(data.slotInterval || INITIAL_SLOT_INTERVAL);
         setMinimumNoticeHours(data.minimumNoticeHours || INITIAL_MINIMUM_NOTICE_HOURS);
         setSelectedCalendarIds(data.googleCalendarIds || []);
+        setAdminEmails(data.adminEmails || []);
       } else {
         console.log("Configuration document not found. Initializing...");
         const initialConfig: AppConfig = {
@@ -73,9 +87,10 @@ function App() {
           slotInterval: INITIAL_SLOT_INTERVAL,
           minimumNoticeHours: INITIAL_MINIMUM_NOTICE_HOURS,
           googleCalendarIds: [],
+          adminEmails: ['esempio@admin.com'], // Add a default admin for initial setup
         };
         try {
-          await configRef.set(initialConfig);
+          await setDoc(configRef, initialConfig);
           console.log("Successfully initialized configuration in Firestore.");
         } catch (error) {
           console.error("Error initializing Firestore configuration:", error);
@@ -91,56 +106,6 @@ function App() {
 
     return () => unsubscribe();
   }, [isLoadingConfig]);
-
-  // --- FIREBASE AUTH STATE ---
-  useEffect(() => {
-    if (!isFirebaseConfigValid) return;
-    const unsubscribe = auth.onAuthStateChanged(user => {
-        setIsAdminLoggedIn(!!user);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // --- GOOGLE AUTH VIA FIREBASE FUNCTIONS ---
-  const checkAuth = useCallback(async () => {
-    if (!isFirebaseConfigValid) {
-        setIsCheckingAuth(false);
-        return;
-    }
-    setIsCheckingAuth(true);
-    setAuthError(null);
-    try {
-      const result = await checkGoogleAuthStatus();
-      const data = result.data as { isConfigured: boolean, error?: string };
-      if (typeof data?.isConfigured !== 'boolean') {
-        throw new Error("La risposta del server per lo stato di configurazione non è valida.");
-      }
-      setIsBackendConfigured(data.isConfigured);
-      if (!data.isConfigured) {
-         setAuthError(data.error || 'BACKEND_NOT_CONFIGURED');
-      }
-    } catch (error: any) {
-      console.error("Error checking backend config status:", error);
-      setIsBackendConfigured(false);
-
-      if (error.code === 'unavailable') {
-          setAuthError('Impossibile connettersi al backend. Assicurati che le funzioni Firebase siano deployate correttamente.');
-      } else if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('permission denied') || error.message.toLowerCase().includes('unauthenticated')))) {
-         setAuthError(
-            'ERRORE DI PERMESSI: L\'applicazione non può chiamare le funzioni sul server. SOLUZIONE: Vai su Google Cloud Console -> Cloud Functions, seleziona le funzioni \'checkGoogleAuthStatus\', \'getGoogleCalendarAvailability\' e \'createGoogleCalendarEvent\'. Per ciascuna, vai su \'Autorizzazioni\', clicca \'Aggiungi entità\', imposta \'Nuove entità\' su \'allUsers\' e assegna il ruolo \'Cloud Functions Invoker\'.'
-        );
-      } else {
-        const detailedMessage = error?.details?.serverMessage || error.message;
-        setAuthError(detailedMessage || "Si è verificato un errore sconosciuto durante la verifica della configurazione del backend.");
-      }
-    } finally {
-      setIsCheckingAuth(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
   
   // --- NAVIGATION HANDLERS ---
   const handleSelectionComplete = (selection: LessonSelection) => {
@@ -165,27 +130,13 @@ function App() {
     setConfirmedBooking(null);
     setBackgroundSport(null);
   };
-  
-  // --- ADMIN HANDLERS ---
-  const handleAdminLoginSuccess = () => {
-    setIsLoginModalOpen(false);
-    showToast('Login effettuato con successo!', 'success');
-  }
-  
-  const handleAdminLogout = async () => {
-    try {
-      await auth.signOut();
-      setIsAdminLoggedIn(false);
-      showToast('Logout effettuato.', 'success');
-    } catch (error) {
-      console.error("Error signing out: ", error);
-      showToast('Errore durante il logout.', 'error');
-    }
-  }
+    
+  const configDocRef = db ? doc(db, 'configuration', 'main') : null;
 
   const handleSaveWorkingHours = async (newHours: WorkingHours) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ workingHours: newHours });
+      await updateDoc(configDocRef, { workingHours: newHours });
       showToast('Orari di lavoro aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving working hours:", error);
@@ -194,8 +145,9 @@ function App() {
   }
   
   const handleSaveDateOverrides = async (newOverrides: DateOverrides) => {
+     if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ dateOverrides: newOverrides });
+      await updateDoc(configDocRef, { dateOverrides: newOverrides });
       showToast('Eccezioni del calendario aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving date overrides:", error);
@@ -204,8 +156,9 @@ function App() {
   }
   
   const handleSaveSportsData = async (newSportsData: Sport[]) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ sportsData: newSportsData });
+      await updateDoc(configDocRef, { sportsData: newSportsData });
       showToast('Dati di sport, lezioni e sedi aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving sports data:", error);
@@ -214,8 +167,9 @@ function App() {
   }
   
   const handleSaveConsultantInfo = async (newInfo: ConsultantInfo) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ consultantInfo: newInfo });
+      await updateDoc(configDocRef, { consultantInfo: newInfo });
       showToast('Informazioni del profilo aggiornate!', 'success');
     } catch (error) {
       console.error("Error saving consultant info:", error);
@@ -224,8 +178,9 @@ function App() {
   }
 
   const handleSaveSlotInterval = async (newInterval: number) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ slotInterval: newInterval });
+      await updateDoc(configDocRef, { slotInterval: newInterval });
       showToast('Intervallo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving slot interval:", error);
@@ -234,8 +189,9 @@ function App() {
   }
 
   const handleSaveMinimumNoticeHours = async (newNotice: number) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ minimumNoticeHours: newNotice });
+      await updateDoc(configDocRef, { minimumNoticeHours: newNotice });
       showToast('Preavviso minimo di prenotazione aggiornato!', 'success');
     } catch (error) {
       console.error("Error saving minimum notice:", error);
@@ -244,14 +200,24 @@ function App() {
   }
 
   const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
+    if (!configDocRef) return;
     try {
-      await db.collection('configuration').doc('main').update({ googleCalendarIds: calendarIds });
+      await updateDoc(configDocRef, { googleCalendarIds: calendarIds });
       showToast('Calendari per la sincronizzazione aggiornati!', 'success');
     } catch (error) {
       console.error("Error saving selected calendars:", error);
       showToast("Errore nel salvataggio dei calendari selezionati.", 'error');
     }
   };
+
+   const handleGoogleLogin = (user: GoogleUser) => {
+    setGoogleUser(user);
+   }
+
+   const handleGoogleLogout = () => {
+    setGoogleUser(null);
+    setIsAdmin(false);
+   }
   
   const renderLoading = () => (
     <div className="flex justify-center items-center h-[600px]">
@@ -259,35 +225,11 @@ function App() {
     </div>
   );
 
-  const renderContent = () => {
+  const renderPublicContent = () => {
     if (isLoadingConfig || !consultantInfo) {
       return renderLoading();
     }
-
-    if (isAdminLoggedIn) {
-      return <AdminPanel 
-        initialSportsData={sportsData}
-        initialWorkingHours={workingHours}
-        initialDateOverrides={dateOverrides}
-        initialConsultantInfo={consultantInfo}
-        initialSlotInterval={slotInterval}
-        initialMinimumNoticeHours={minimumNoticeHours}
-        initialSelectedCalendarIds={selectedCalendarIds}
-        onSaveSportsData={handleSaveSportsData}
-        onSaveWorkingHours={handleSaveWorkingHours}
-        onSaveDateOverrides={handleSaveDateOverrides}
-        onSaveConsultantInfo={handleSaveConsultantInfo}
-        onSaveSlotInterval={handleSaveSlotInterval}
-        onSaveMinimumNoticeHours={handleSaveMinimumNoticeHours}
-        onSaveSelectedCalendars={handleSaveSelectedCalendars}
-        onLogout={handleAdminLogout}
-        isBackendConfigured={isBackendConfigured}
-        onRefreshAuthStatus={checkAuth}
-        isCheckingAuth={isCheckingAuth}
-        authError={authError}
-      />;
-    }
-
+    
     switch (currentPage) {
       case 'selection':
         return <EventTypeSelection sports={sportsData} onSelectionComplete={handleSelectionComplete} consultant={consultantInfo} onSportChange={setBackgroundSport} />;
@@ -350,16 +292,47 @@ function App() {
         </div>
     );
   }
+  
+  const AdminModal = () => (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div className="bg-white w-full h-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <AdminPanel 
+              user={googleUser}
+              isAdmin={isAdmin}
+              onGoogleLogin={handleGoogleLogin}
+              onGoogleLogout={handleGoogleLogout}
+              onExitAdminView={() => setShowAdminModal(false)}
+              initialSportsData={sportsData}
+              initialWorkingHours={workingHours}
+              initialDateOverrides={dateOverrides}
+              initialConsultantInfo={consultantInfo!}
+              initialSlotInterval={slotInterval}
+              initialMinimumNoticeHours={minimumNoticeHours}
+              initialSelectedCalendarIds={selectedCalendarIds}
+              onSaveSportsData={handleSaveSportsData}
+              onSaveWorkingHours={handleSaveWorkingHours}
+              onSaveDateOverrides={handleSaveDateOverrides}
+              onSaveConsultantInfo={handleSaveConsultantInfo}
+              onSaveSlotInterval={handleSaveSlotInterval}
+              onSaveMinimumNoticeHours={handleSaveMinimumNoticeHours}
+              onSaveSelectedCalendars={handleSaveSelectedCalendars}
+              showToast={showToast}
+            />
+        </div>
+    </div>
+  )
 
   return (
     <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {backgroundSport && <BackgroundIcon sport={backgroundSport} />}
+      {showAdminModal && <AdminModal />}
+
       <header className="bg-neutral-50 border-b border-neutral-200 relative z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <h1 className="text-2xl font-bold text-primary">Prenotazione Lezioni</h1>
             <div className="flex items-center gap-4">
-              <button onClick={() => setIsLoginModalOpen(true)} title="Admin Login" className="text-neutral-400 hover:text-primary transition-colors duration-200">
+              <button onClick={() => setShowAdminModal(true)} title="Pannello Admin" className="text-neutral-400 hover:text-primary transition-colors duration-200">
                 <CogIcon className="w-6 h-6" />
               </button>
             </div>
@@ -367,16 +340,9 @@ function App() {
       </header>
       <main className="max-w-5xl mx-auto my-8 sm:my-10 relative z-10">
         <div className="bg-neutral-50 rounded-2xl shadow-lg overflow-hidden border border-neutral-200">
-          {renderContent()}
+          {renderPublicContent()}
         </div>
       </main>
-      
-      {isLoginModalOpen && !isAdminLoggedIn && (
-        <LoginModal 
-          onClose={() => setIsLoginModalOpen(false)}
-          onLoginSuccess={handleAdminLoginSuccess}
-        />
-      )}
     </div>
   );
 }

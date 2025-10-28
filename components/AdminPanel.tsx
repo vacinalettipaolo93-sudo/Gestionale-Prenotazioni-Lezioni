@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
-import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, InformationCircleIcon, CheckIcon } from './icons';
-import { getGoogleCalendarList, getServiceAccountEmail } from '../firebaseConfig';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, InformationCircleIcon } from './icons';
+import { getGoogleCalendarList } from '../firebaseConfig';
+import { GOOGLE_CLIENT_ID, GOOGLE_API_SCOPES } from '../googleConfig';
+
+// Dichiarazioni di tipo per le API globali di Google
+declare global {
+    interface Window {
+        gapi: any;
+        google: any;
+        tokenClient: any;
+    }
+}
 
 interface GoogleCalendar {
     id: string;
@@ -9,7 +19,17 @@ interface GoogleCalendar {
     accessRole: 'owner' | 'writer' | 'reader' | 'freeBusyReader';
 }
 
+interface GoogleUser {
+    email: string;
+    name: string;
+    picture: string;
+}
+
 interface AdminPanelProps {
+    user: GoogleUser | null;
+    isAdmin: boolean;
+    onGoogleLogin: (user: GoogleUser) => void;
+    onGoogleLogout: () => void;
     initialWorkingHours: WorkingHours;
     initialDateOverrides: DateOverrides;
     initialSportsData: Sport[];
@@ -24,14 +44,15 @@ interface AdminPanelProps {
     onSaveSlotInterval: (newInterval: number) => void;
     onSaveMinimumNoticeHours: (newNotice: number) => void;
     onSaveSelectedCalendars: (calendarIds: string[]) => void;
-    onLogout: () => void;
-    isBackendConfigured: boolean;
-    onRefreshAuthStatus: () => void;
-    isCheckingAuth: boolean;
-    authError?: string | null;
+    onExitAdminView: () => void;
+    showToast: (message: string, type: 'success' | 'error') => void;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
+    user,
+    isAdmin,
+    onGoogleLogin,
+    onGoogleLogout,
     initialWorkingHours, 
     initialDateOverrides, 
     initialSportsData,
@@ -46,11 +67,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onSaveSlotInterval,
     onSaveMinimumNoticeHours,
     onSaveSelectedCalendars,
-    onLogout,
-    isBackendConfigured,
-    onRefreshAuthStatus,
-    isCheckingAuth,
-    authError
+    onExitAdminView,
+    showToast,
 }) => {
     const [workingHours, setWorkingHours] = useState<WorkingHours>(initialWorkingHours);
     const [dateOverrides, setDateOverrides] = useState<DateOverrides>(initialDateOverrides);
@@ -67,14 +85,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [newOverrideEnd, setNewOverrideEnd] = useState('17:00');
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
-    // State for Integrations Tab
+    // --- State for Google OAuth 2.0 Integration ---
+    const [isGapiLoaded, setIsGapiLoaded] = useState(false);
+    const [isGisLoaded, setIsGisLoaded] = useState(false);
+    const [googleTokenClient, setGoogleTokenClient] = useState<any>(null);
+    const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(localStorage.getItem('google_access_token'));
+    
     const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
-    const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
-    const [isLoadingEmail, setIsLoadingEmail] = useState(false);
-    const [emailError, setEmailError] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
+
+    const isBackendConfigured = !!googleAccessToken;
 
     const writableCalendars = useMemo(() => {
         return allGoogleCalendars.filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer');
@@ -91,52 +112,144 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
 
+    // --- Google API Initialization ---
+    useEffect(() => {
+        const handleGapiLoad = () => {
+            window.gapi.load('client', () => {
+                console.log("Google API client library loaded.");
+                setIsGapiLoaded(true);
+            });
+        };
+
+        const handleGisLoad = () => {
+            console.log("Google Identity Services library loaded.");
+            setIsGisLoaded(true);
+        };
+
+        const gapiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
+        const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+
+        // Check if GAPI is already loaded
+        if (window.gapi?.client) {
+            setIsGapiLoaded(true);
+        } else if (gapiScript) {
+            gapiScript.addEventListener('load', handleGapiLoad);
+        } else {
+            console.error('GAPI script tag not found.');
+        }
+
+        // Check if GIS is already loaded
+        if (window.google?.accounts?.oauth2) {
+            setIsGisLoaded(true);
+        } else if (gisScript) {
+            gisScript.addEventListener('load', handleGisLoad);
+        } else {
+            console.error('GIS script tag not found.');
+        }
+
+        // Cleanup
+        return () => {
+            if (gapiScript) gapiScript.removeEventListener('load', handleGapiLoad);
+            if (gisScript) gisScript.removeEventListener('load', handleGisLoad);
+        };
+    }, []);
+    
+    useEffect(() => {
+        if (isGapiLoaded && isGisLoaded && !googleTokenClient) {
+            try {
+                const client = window.google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_CLIENT_ID,
+                    scope: GOOGLE_API_SCOPES,
+                    callback: async (tokenResponse: any) => {
+                        if (tokenResponse && tokenResponse.access_token) {
+                            setGoogleAccessToken(tokenResponse.access_token);
+                            localStorage.setItem('google_access_token', tokenResponse.access_token);
+                            
+                            // Fetch user info after getting token
+                            try {
+                                // Initialize the client before using it
+                                await window.gapi.client.init({});
+                                const userInfo = await window.gapi.client.oauth2.userinfo.get();
+                                onGoogleLogin({
+                                    email: userInfo.result.email,
+                                    name: userInfo.result.name,
+                                    picture: userInfo.result.picture,
+                                });
+                                showToast('Login riuscito!', 'success');
+                            } catch (error) {
+                                console.error("Error fetching user info:", error);
+                                showToast('Errore nel recupero delle info utente.', 'error');
+                            }
+                        } else {
+                            console.error("Token response error:", tokenResponse);
+                            showToast('Errore durante l\'autenticazione con Google.', 'error');
+                        }
+                    },
+                });
+                setGoogleTokenClient(client);
+            } catch (error) {
+                console.error("Error initializing Google Token Client:", error);
+                showToast("Impossibile inizializzare l'autenticazione Google.", "error");
+            }
+        }
+    }, [isGapiLoaded, isGisLoaded, showToast, onGoogleLogin, googleTokenClient]);
+
+
     const fetchCalendars = useCallback(async () => {
+        if (!googleAccessToken || !getGoogleCalendarList) {
+            setCalendarError("Autenticazione Google richiesta.");
+            return;
+        }
         setIsLoadingCalendars(true);
         setCalendarError(null);
         try {
-            const result = await getGoogleCalendarList();
+            const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
             const data = result.data as { calendars: GoogleCalendar[] };
             setAllGoogleCalendars(data.calendars || []);
         } catch (error: any) {
-             console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error);
-            const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto durante il caricamento dei calendari.";
-            setCalendarError(`Caricamento fallito. ${detailedMessage} Controlla i log della funzione per maggiori dettagli.`);
+            console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error.message);
+            const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
+            setCalendarError(`Caricamento fallito: ${detailedMessage}`);
+
+            if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('token') || error.message.toLowerCase().includes('credentials')))) {
+                handleGoogleDisconnect();
+                showToast('Sessione Google scaduta o non valida. Riconnettiti.', 'error');
+            }
         } finally {
             setIsLoadingCalendars(false);
         }
-    }, []);
+    }, [googleAccessToken, showToast]);
 
-    // Fetch Service Account Email once
     useEffect(() => {
-        if (!serviceAccountEmail && !isLoadingEmail) {
-            setIsLoadingEmail(true);
-            setEmailError(null);
-            getServiceAccountEmail()
-                .then(result => {
-                    const data = result.data as { email: string };
-                    setServiceAccountEmail(data.email);
-                })
-                .catch((error: any) => {
-                    console.error("Failed to fetch service account email:", error);
-                    const message = error.message || "Errore sconosciuto.";
-                    setEmailError(`Impossibile caricare l'email del service account. Dettagli: ${message}`);
-                })
-                .finally(() => {
-                    setIsLoadingEmail(false);
-                });
+        if(isAdmin) {
+            const shouldFetch = (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
+            if (shouldFetch && googleAccessToken && allGoogleCalendars.length === 0) {
+                fetchCalendars();
+            }
         }
-    }, [serviceAccountEmail, isLoadingEmail]);
+    }, [isAdmin, activeTab, googleAccessToken, fetchCalendars, allGoogleCalendars.length]);
 
-    // Fetch Google Calendars when relevant tabs are active and backend is configured
-    useEffect(() => {
-        const shouldFetch = isBackendConfigured && (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
-        
-        // Fetch if the tab is relevant and we haven't successfully fetched calendars yet.
-        if (shouldFetch && allGoogleCalendars.length === 0 && !isLoadingCalendars && !calendarError) {
-            fetchCalendars();
+
+    // --- Google Auth Handlers ---
+    const handleGoogleConnect = () => {
+        if (googleTokenClient) {
+            googleTokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+             showToast('Libreria di autenticazione Google non ancora pronta.', 'error');
         }
-    }, [isBackendConfigured, activeTab, allGoogleCalendars.length, fetchCalendars, isLoadingCalendars, calendarError]);
+    };
+
+    const handleGoogleDisconnect = () => {
+        if (googleAccessToken) {
+            window.google.accounts.oauth2.revoke(googleAccessToken, () => {
+                setGoogleAccessToken(null);
+                localStorage.removeItem('google_access_token');
+                setAllGoogleCalendars([]);
+                onGoogleLogout();
+                showToast('Logout effettuato.', 'success');
+            });
+        }
+    };
 
 
     // --- State Update Handlers ---
@@ -166,7 +279,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             reader.readAsDataURL(file);
         }
     };
-
 
     // --- Hours & Overrides Handlers ---
     const handleWorkingHoursChange = (day: number, field: 'start' | 'end', value: string) => {
@@ -361,15 +473,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 return [...prev, calendarId];
             }
         });
-    };
-
-    const handleCopyToClipboard = () => {
-        if (serviceAccountEmail) {
-            navigator.clipboard.writeText(serviceAccountEmail).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
-            });
-        }
     };
 
     const renderProfileTab = () => (
@@ -762,175 +865,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </div>
     );
-    
+
     const renderIntegrationsTab = () => {
-        const shouldShowSetup = !isBackendConfigured || (isBackendConfigured && !isLoadingCalendars && writableCalendars.length === 0);
-
-        const renderSetupInstructions = () => (
-            <div className="mt-6 p-6 bg-neutral-100 border border-neutral-200 rounded-lg text-sm">
-                <p className="font-semibold text-xl text-neutral-800 mb-4">Configura l'integrazione con Google Calendar</p>
-                <p className="text-neutral-400 mb-6">Per permettere a questa applicazione di leggere la tua disponibilità e creare eventi, devi condividere i tuoi calendari di Google Calendar con il suo Service Account. Segui questi passaggi:</p>
-                
-                <ol className="space-y-4 list-decimal list-inside text-neutral-600">
-                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">1. Abilita l'API di Google Calendar</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-3">
-                            Assicurati che l'API di Google Calendar sia abilitata per il tuo progetto Google Cloud. Potrebbe essere necessario abilitare anche la fatturazione per il progetto.
-                        </p>
-                        <a href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} target="_blank" rel="noopener noreferrer" className="inline-block bg-blue-500 text-white px-4 py-2 text-sm font-semibold rounded hover:bg-blue-600 transition-colors">
-                            Abilita Google Calendar API
-                        </a>
-                    </li>
-                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">2. Copia l'email del Service Account</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-2">Questo è l'indirizzo "robot" che accederà ai tuoi calendari.</p>
-                        {isLoadingEmail && (
-                            <div className="flex items-center text-neutral-400 text-xs">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
-                                Caricamento email...
-                            </div>
-                        )}
-                        {emailError && (
-                             <div className="p-2 bg-red-900/10 text-red-400 text-xs rounded border border-red-400/30">
-                                <strong>Errore:</strong> {emailError}
-                            </div>
-                        )}
-                        {serviceAccountEmail && (
-                            <div className="flex items-center gap-2 p-2 bg-neutral-100 rounded">
-                                <code className="text-primary font-mono flex-grow break-all text-xs">{serviceAccountEmail}</code>
-                                <button 
-                                    onClick={handleCopyToClipboard} 
-                                    disabled={!serviceAccountEmail}
-                                    className="bg-primary text-white px-3 py-1 text-xs font-semibold rounded hover:bg-primary-dark transition-colors flex-shrink-0"
-                                >
-                                    {copied ? 'Copiato!' : 'Copia'}
-                                </button>
-                            </div>
-                        )}
-                    </li>
-
-                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">3. Condividi i tuoi calendari Google</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-3">Vai alle impostazioni del calendario che vuoi usare, cerca la sezione "Condividi con persone o gruppi specifici" e incolla l'email del Service Account qui sopra.</p>
-                        <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="inline-block bg-blue-500 text-white px-4 py-2 text-sm font-semibold rounded hover:bg-blue-600 transition-colors">
-                            Apri Impostazioni Google Calendar
-                        </a>
-                    </li>
-
-                    <li className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-800">
-                        <span className="font-bold">4. Imposta i permessi corretti (Importante!)</span>
-                        <p className="text-xs mt-1">Quando condividi, assicurati di selezionare il permesso <strong className="font-bold">"Apportare modifiche agli eventi"</strong>. Senza questo permesso, l'applicazione non potrà creare le prenotazioni.</p>
-                    </li>
-                    
-                    <li className="p-4 bg-neutral-50 rounded-md border border-neutral-200">
-                        <span className="font-bold">5. Verifica di nuovo</span>
-                        <p className="text-xs text-neutral-400 mt-1 mb-3">Dopo aver condiviso, torna qui e clicca il pulsante qui sotto per ricaricare la lista dei calendari. Potrebbero essere necessari alcuni minuti prima che le modifiche siano effettive.</p>
-                        <button 
-                                onClick={() => { fetchCalendars(); onRefreshAuthStatus(); }}
-                                className="text-sm text-white bg-primary hover:bg-primary-dark py-2 px-4 rounded transition-colors disabled:bg-neutral-400"
-                                disabled={isLoadingCalendars || isCheckingAuth}
-                            >
-                                {isLoadingCalendars || isCheckingAuth ? 'Verifica...' : 'Ricarica Stato e Calendari'}
-                        </button>
-                    </li>
-                </ol>
-            </div>
-        );
-
         return (
-            <div className="p-6 bg-neutral-50 rounded-lg shadow-sm border border-neutral-200">
-                <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
+            <div className="p-6">
+                 <h3 className="text-xl font-semibold mb-2 text-neutral-800">Integrazione Google Calendar</h3>
+                 <p className="text-sm text-neutral-400 mb-6">Collega il tuo Account Google per sincronizzare la disponibilità e creare eventi automaticamente.</p>
                 
-                <div className="flex justify-between items-center mb-6 p-4 bg-neutral-100 border border-neutral-200 rounded-lg">
-                    <div className="flex items-center">
-                        {isBackendConfigured ? 
-                            <CheckIcon className="w-6 h-6 text-green-400 mr-3" /> :
-                            <InformationCircleIcon className="w-6 h-6 text-amber-500 mr-3" />
-                        }
-                        <p className={`font-semibold ${isBackendConfigured ? 'text-green-400' : 'text-amber-500'}`}>
-                            {isBackendConfigured ? 'Configurazione backend attiva e connessa a Google.' : 'Configurazione backend non attiva.'}
-                        </p>
+                <div className="p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
+                    <div className="flex flex-col sm:flex-row items-center justify-between">
+                        <div>
+                            <h4 className="font-semibold text-lg text-neutral-800">Stato della connessione</h4>
+                            {googleAccessToken ? (
+                                <p className="text-green-600 font-semibold mt-1">Collegato come {user?.email}</p>
+                            ) : (
+                                <p className="text-neutral-400 mt-1">Non collegato</p>
+                            )}
+                        </div>
+                        <div className="mt-4 sm:mt-0">
+                           <button
+                                onClick={handleGoogleDisconnect}
+                                className="bg-red-500 text-white font-bold py-2 px-6 rounded-md hover:bg-red-600 transition-colors"
+                            >
+                                Logout
+                            </button>
+                        </div>
                     </div>
-                     <button 
-                        onClick={onRefreshAuthStatus} 
-                        className="text-sm text-primary hover:underline disabled:text-neutral-400 disabled:no-underline"
-                        disabled={isCheckingAuth}
-                    >
-                        {isCheckingAuth ? 'Verifica...' : 'Verifica Stato'}
-                    </button>
+                    {GOOGLE_CLIENT_ID.startsWith("IL_TUO") && (
+                        <div className="mt-4 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm">
+                           <strong>Azione richiesta:</strong> Inserisci il tuo Google Client ID nel file <code className="font-mono bg-amber-200/50 p-1 rounded">googleConfig.ts</code> per abilitare la connessione.
+                        </div>
+                    )}
                 </div>
 
-                { shouldShowSetup && renderSetupInstructions() }
-
-                { isBackendConfigured && !shouldShowSetup && (
-                <div>
-                    <h4 className="font-semibold text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
+                { googleAccessToken && (
+                 <div className="mt-6 p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
+                    <h4 className="font-semibold text-lg text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
                     <p className="text-sm text-neutral-400 mb-4">
                         Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
                     </p>
-
                     {isLoadingCalendars ? (
-                        <div className="flex items-center justify-center p-4">
+                         <div className="flex items-center justify-center p-4">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                            <span className="ml-3 text-neutral-400">Caricamento calendari...</span>
-                        </div>
-                    ) : calendarError ? (
-                        <div className="p-4 bg-red-900/50 border border-red-400 text-red-300 rounded-md">
-                            <p className="font-bold">Errore</p>
-                            <p>{calendarError}</p>
-                            <button 
-                                onClick={fetchCalendars}
-                                className="mt-2 text-sm text-white bg-primary hover:bg-primary-dark py-1 px-3 rounded transition-colors disabled:bg-neutral-400"
-                                disabled={isLoadingCalendars}
-                            >
-                                Riprova
-                            </button>
-                        </div>
-                    ) : (
+                         </div>
+                    ): calendarError ? (
+                        <p className="text-red-500">{calendarError}</p>
+                    ) : allGoogleCalendars.length > 0 ? (
                         <>
-                            <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
-                                {allGoogleCalendars.length > 0 ? (
-                                    allGoogleCalendars.map(cal => (
-                                        <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50/50 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedCalendarIds.includes(cal.id)}
-                                            onChange={() => handleCalendarSelectionChange(cal.id)}
-                                            className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-100"
-                                        />
-                                        <span className="ml-3 text-neutral-600">{cal.summary}</span>
-                                        { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
-                                            <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
-                                        }
-                                        </label>
-                                    ))
-                                ) : (
-                                    <div className="text-center p-4">
-                                        <p className="font-semibold text-neutral-800">Nessun calendario trovato</p>
-                                        <p className="text-sm text-neutral-400 mt-1">
-                                            La connessione a Google ha funzionato, ma non abbiamo trovato calendari. Assicurati di aver condiviso almeno un calendario con l'email del Service Account e attendi qualche minuto per la sincronizzazione.
-                                        </p>
-                                    </div>
-                                )}
+                         <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
+                                {allGoogleCalendars.map(cal => (
+                                    <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedCalendarIds.includes(cal.id)}
+                                        onChange={() => handleCalendarSelectionChange(cal.id)}
+                                        className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-50"
+                                    />
+                                    <span className="ml-3 text-neutral-600">{cal.summary}</span>
+                                    { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
+                                        <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
+                                    }
+                                    </label>
+                                ))}
                             </div>
-                            {allGoogleCalendars.length > 0 && writableCalendars.length === 0 && (
-                                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-800 text-sm">
-                                    <p><span className="font-bold">Attenzione:</span> Hai condiviso dei calendari, ma a nessuno di essi è stato concesso il permesso di <strong className="font-bold">"Apportare modifiche agli eventi"</strong>. L'app potrà solo leggere la disponibilità, ma non potrà creare nuove prenotazioni.</p>
-                                </div>
-                            )}
+                             <div className="mt-6 text-right">
+                                <button 
+                                    onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
+                                    className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                                >
+                                    Salva Calendari Selezionati
+                                </button>
+                            </div>
                         </>
+                    ) : (
+                        <p className="text-neutral-400 text-center p-4">Nessun calendario trovato nel tuo account Google.</p>
                     )}
-                    
-                    <div className="mt-6 text-right">
-                        <button 
-                            onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
-                            disabled={isLoadingCalendars}
-                            className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors disabled:bg-neutral-400"
-                        >
-                            Salva Calendari Selezionati
-                        </button>
-                    </div>
-                </div>
+                 </div>
                 )}
             </div>
         );
@@ -943,48 +953,64 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         { id: 'integrations', label: 'Integrazioni'}
     ];
     
-    const renderAuthError = () => {
-        if (isBackendConfigured || isCheckingAuth) return null;
-    
+    // --- Render Logic based on Auth State ---
+
+    if (!googleAccessToken) {
         return (
-            <div className="p-4 mb-6 bg-red-100 border border-red-400 text-red-700 rounded-lg shadow-md" role="alert">
-                <div className="flex">
-                    <div className="py-1"><InformationCircleIcon className="fill-current h-6 w-6 text-red-500 mr-4"/></div>
-                    <div>
-                        <p className="font-bold">Azione Richiesta: Configurazione Google Calendar Incompleta</p>
-                        <p className="text-sm">
-                            L'integrazione con Google Calendar non è attiva. Per abilitare la sincronizzazione, vai alla scheda "Integrazioni" e segui le istruzioni.
-                        </p>
-                        {authError && authError !== 'BACKEND_NOT_CONFIGURED' && (
-                             <div className="mt-2 p-2 bg-red-200 border border-red-300 rounded-md">
-                                <p className="font-semibold text-red-800 text-xs">Dettaglio Errore:</p>
-                                <p className="text-red-700 text-xs font-mono">{authError}</p>
-                            </div>
-                        )}
-                        <div className="mt-4">
-                            <button
-                                onClick={() => setActiveTab('integrations')}
-                                className="bg-primary text-white font-semibold py-2 px-4 rounded-md hover:bg-primary-dark transition-colors text-sm"
-                            >
-                                Vai a Integrazioni
-                            </button>
-                            <button
-                                onClick={onRefreshAuthStatus}
-                                disabled={isCheckingAuth}
-                                className="ml-2 border border-primary text-primary font-semibold py-2 px-4 rounded-md hover:bg-primary/10 transition-colors disabled:opacity-50 text-sm"
-                            >
-                                {isCheckingAuth ? 'Verifica...' : 'Riprova Verifica'}
-                            </button>
-                        </div>
+             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
+                <h2 className="text-2xl font-bold text-neutral-800 mb-2">Pannello di Amministrazione</h2>
+                <p className="text-neutral-400 mb-6">Accedi con il tuo account Google per gestire le impostazioni.</p>
+                <button
+                    onClick={handleGoogleConnect}
+                    disabled={!isGapiLoaded || !isGisLoaded || !googleTokenClient}
+                    className="bg-blue-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-600 transition-colors disabled:bg-neutral-200 disabled:cursor-not-allowed flex items-center gap-3"
+                >
+                    {/* Fix: Corrected a typo in the SVG closing tag from </psvg> to </path></svg> */}
+                    <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
+                    Accedi con Google
+                </button>
+                 {(!isGapiLoaded || !isGisLoaded || !googleTokenClient) && (
+                    <p className="text-xs text-neutral-400 mt-4 animate-pulse">
+                        Inizializzazione dei servizi Google in corso...
+                    </p>
+                )}
+                 {GOOGLE_CLIENT_ID.startsWith("IL_TUO") && (
+                    <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
+                       <strong>Azione richiesta:</strong> Inserisci il tuo Google Client ID nel file <code className="font-mono bg-amber-200/50 p-1 rounded">googleConfig.ts</code> per abilitare l'accesso.
                     </div>
-                </div>
+                )}
+                 <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
+                    <XIcon className="w-8 h-8"/>
+                 </button>
             </div>
         );
-    };
+    }
+    
+    if (!isAdmin) {
+         return (
+             <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
+                <InformationCircleIcon className="w-16 h-16 text-red-500 mb-4" />
+                <h2 className="text-2xl font-bold text-neutral-800 mb-2">Accesso Negato</h2>
+                <p className="text-neutral-400 mb-6 max-w-md">
+                    L'account <strong className="text-neutral-600">{user?.email}</strong> non è autorizzato ad accedere a questa sezione. Contatta l'amministratore per richiedere l'accesso.
+                </p>
+                <button
+                    onClick={handleGoogleDisconnect}
+                    className="bg-neutral-500 text-white font-bold py-2 px-6 rounded-md hover:bg-neutral-600 transition-colors"
+                >
+                    Logout
+                </button>
+                 <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">
+                    <XIcon className="w-8 h-8"/>
+                 </button>
+            </div>
+        );
+    }
 
-
+    // --- Render Full Admin Panel if Logged in and Authorized ---
+    
     return (
-        <div className="flex flex-col md:flex-row min-h-screen bg-neutral-100 text-neutral-600">
+        <div className="flex flex-col md:flex-row h-full bg-neutral-100 text-neutral-600">
             {/* Sidebar */}
             <nav className="w-full md:w-64 bg-neutral-50 shadow-md p-4 flex flex-col border-r border-neutral-200 flex-shrink-0">
                 <div className="flex flex-row md:flex-col flex-wrap md:flex-nowrap gap-1 md:space-y-2 flex-grow">
@@ -1001,17 +1027,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     ))}
                 </div>
                  <button 
-                    onClick={onLogout} 
-                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-red-500 hover:bg-red-500/10 mt-4"
+                    onClick={onExitAdminView} 
+                    className="w-full text-left font-semibold p-3 rounded-md transition-colors text-neutral-600 hover:bg-neutral-200/50 mt-4 flex items-center gap-2"
                 >
-                    Logout
+                    <ArrowLeftOnRectangleIcon className="w-5 h-5" />
+                    Esci dal Pannello
                 </button>
             </nav>
 
             {/* Content */}
             <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-                {renderAuthError()}
-
                 {activeTab === 'profile' && renderProfileTab()}
                 {activeTab === 'hours' && renderHoursTab()}
                 {activeTab === 'services' && renderServicesTab()}

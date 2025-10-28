@@ -4,8 +4,9 @@ import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverri
 import { generateAvailableTimes, CalendarEvent } from '../utils/date';
 import { getDaysInMonth, getMonthName, getYear } from '../utils/date';
 import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon, PhoneIcon, PlusIcon, XIcon } from './icons';
-import { db, firestore, getGoogleCalendarAvailability, createGoogleCalendarEvent } from '../firebaseConfig';
-import type firebase from 'firebase/compat/app';
+import { db, firestore, getGoogleCalendarAvailability, createGoogleCalendarEvent, auth } from '../firebaseConfig';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+
 
 interface BookingPageProps {
   selection: LessonSelection;
@@ -47,34 +48,40 @@ const BookingPage: React.FC<BookingPageProps> = ({
       
       const fetchBookingsAndGenerateTimes = async () => {
         try {
+            if (!db) throw new Error("Firestore not initialized");
+
             const startOfDay = new Date(selectedDate);
             startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(selectedDate);
             endOfDay.setHours(23, 59, 59, 999);
 
             // Fetch bookings from Firestore
-            const bookingsRef = db.collection("bookings");
-            const q = bookingsRef
-                .where("startTime", ">=", firestore.Timestamp.fromDate(startOfDay))
-                .where("startTime", "<=", firestore.Timestamp.fromDate(endOfDay));
+            const bookingsRef = collection(db, "bookings");
+            const q = query(bookingsRef,
+                where("startTime", ">=", firestore.Timestamp.fromDate(startOfDay)),
+                where("startTime", "<=", firestore.Timestamp.fromDate(endOfDay))
+            );
             
-            const querySnapshot = await q.get();
+            const querySnapshot = await getDocs(q);
             const existingBookings: Booking[] = [];
-            querySnapshot.forEach((doc) => {
+            querySnapshot.forEach((doc: any) => {
                 const data = doc.data();
                 existingBookings.push({
                     ...data,
-                    startTime: (data.startTime as firebase.firestore.Timestamp).toDate(),
+                    startTime: (data.startTime as any).toDate(),
                 } as Booking);
             });
 
-            // Fetch busy slots from Google Calendar via Firebase Function
+            // Fetch busy slots from Google Calendar via Firebase Function using the admin's token
             let calendarEvents: CalendarEvent[] = [];
-            if (selectedCalendarIds && selectedCalendarIds.length > 0) {
+            const adminGoogleToken = localStorage.getItem('google_access_token');
+
+            if (selectedCalendarIds && selectedCalendarIds.length > 0 && adminGoogleToken) {
               const result = await getGoogleCalendarAvailability({
                 timeMin: startOfDay.toISOString(),
                 timeMax: endOfDay.toISOString(),
                 calendarIds: selectedCalendarIds,
+                googleAuthToken: adminGoogleToken,
               });
               const data = result.data as { busy: { start: string, end: string }[] };
               if (data.busy) {
@@ -83,6 +90,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
                   endTime: new Date(slot.end)
                 }));
               }
+            } else if (selectedCalendarIds && selectedCalendarIds.length > 0 && !adminGoogleToken) {
+                console.warn("L'amministratore non è autenticato con Google, la disponibilità potrebbe non essere accurata.");
             }
 
             const effectiveSlotInterval = selection.location.slotInterval && selection.location.slotInterval > 0
@@ -94,8 +103,8 @@ const BookingPage: React.FC<BookingPageProps> = ({
         } catch (error: any) {
             console.error("Error fetching availability:", error);
             let errorMessage = "Errore nel caricamento delle disponibilità. Controlla la console per i dettagli.";
-            if (error.code === 'unauthenticated' || (error.message && error.message.includes("Google authentication"))) {
-                 errorMessage = "Autorizzazione Google richiesta per verificare la disponibilità. L'amministratore deve connettere il proprio account nel Pannello Admin > Integrazioni.";
+             if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes("permission") || error.message.toLowerCase().includes("token")))) {
+                 errorMessage = "L'integrazione con Google Calendar non è attiva o la sessione è scaduta. L'amministratore deve (ri)connettere il proprio account nel Pannello Admin.";
             }
             setAvailabilityError(errorMessage);
             setAvailableTimes([]);
@@ -148,10 +157,10 @@ const BookingPage: React.FC<BookingPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !phone || !selectedTime || !selectedDate) return;
+    if (!name || !email || !phone || !selectedTime || !selectedDate || !db) return;
     
     setIsSubmitting(true);
-    let docRef: firebase.firestore.DocumentReference | null = null;
+    let docRef: any | null = null;
 
     try {
         const [hours, minutes] = selectedTime.split(':').map(Number);
@@ -162,8 +171,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
         
         const finalParticipants = participants.filter(p => p.trim() !== '');
 
-        // 1. Create initial booking data for Firestore
-        const bookingDataForFirestore = {
+        const bookingDataForFirestore: Omit<Booking, 'startTime'> & { startTime: any } = {
             sportId: selection.sport.id,
             lessonTypeId: selection.lessonType.id,
             duration: selection.option.duration,
@@ -175,85 +183,90 @@ const BookingPage: React.FC<BookingPageProps> = ({
             participants: finalParticipants,
         };
 
-        // 2. Save initial booking to Firestore to get a document ID
-        docRef = await db.collection("bookings").add(bookingDataForFirestore);
+        docRef = await addDoc(collection(db, "bookings"), bookingDataForFirestore);
         console.log("Booking document created with ID:", docRef.id);
-
-        // 3. Prepare payload for Google Calendar event
-        let eventDescription = `Prenotazione effettuata da ${name} (${email}).\nTelefono: ${phone}.`;
-        if (finalParticipants.length > 0) {
-            eventDescription += `\nAltri partecipanti: ${finalParticipants.join(', ')}.`;
-        }
         
-        const attendees = [{ 'email': email }];
-        if(consultant.email) {
-            attendees.push({ 'email': consultant.email });
+        // --- Google Calendar Event Creation ---
+        const adminGoogleToken = localStorage.getItem('google_access_token');
+        let googleEventId: string | undefined = undefined;
+
+        if (adminGoogleToken) {
+            let eventDescription = `Prenotazione effettuata da ${name} (${email}).\nTelefono: ${phone}.`;
+            if (finalParticipants.length > 0) {
+                eventDescription += `\nAltri partecipanti: ${finalParticipants.join(', ')}.`;
+            }
+            
+            const attendees = [{ 'email': email }];
+            if(consultant.email) {
+                attendees.push({ 'email': consultant.email });
+            }
+
+            const eventPayload = {
+                'summary': `${selection.sport.name}: ${selection.lessonType.name} - ${name}`,
+                'location': selection.location.address,
+                'description': eventDescription,
+                'start': {
+                    'dateTime': bookingStartTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                },
+                'end': {
+                    'dateTime': bookingEndTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                },
+                'attendees': attendees,
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [
+                        { 'method': 'email', 'minutes': 24 * 60 },
+                        { 'method': 'popup', 'minutes': 30 },
+                    ],
+                },
+            };
+
+            let targetCalendarId = 'primary';
+            if (selection.location.googleCalendarId) {
+                targetCalendarId = selection.location.googleCalendarId;
+            } else if (selection.sport.googleCalendarId) {
+                targetCalendarId = selection.sport.googleCalendarId;
+            }
+            
+            try {
+                const calendarResult = await createGoogleCalendarEvent({ 
+                    event: eventPayload, 
+                    calendarId: targetCalendarId,
+                    sendUpdates: 'all',
+                    googleAuthToken: adminGoogleToken,
+                });
+
+                const calendarData = calendarResult.data as { success: boolean; eventId: string; eventUrl: string; };
+                
+                if (calendarData.success) {
+                    googleEventId = calendarData.eventId;
+                    await docRef.update({ googleEventId: googleEventId });
+                } else {
+                    throw new Error("La creazione dell'evento su Google Calendar è fallita.");
+                }
+            } catch (calendarError: any) {
+                console.warn("Could not create Google Calendar event, proceeding without it. Error:", calendarError.message);
+                showToast("Prenotazione salvata, ma impossibile creare l'evento su Google Calendar.", 'error');
+            }
+        } else {
+            console.warn("No admin Google token found. Skipping Google Calendar event creation.");
         }
 
-        const eventPayload = {
-            'summary': `${selection.sport.name}: ${selection.lessonType.name} - ${name}`,
-            'location': selection.location.address,
-            'description': eventDescription,
-            'start': {
-                'dateTime': bookingStartTime.toISOString(),
-                'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
-            },
-            'end': {
-                'dateTime': bookingEndTime.toISOString(),
-                'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
-            },
-            'attendees': attendees,
-            'reminders': {
-                'useDefault': false,
-                'overrides': [
-                    { 'method': 'email', 'minutes': 24 * 60 },
-                    { 'method': 'popup', 'minutes': 30 },
-                ],
-            },
-        };
-
-        let targetCalendarId = 'primary';
-        if (selection.location.googleCalendarId) {
-            targetCalendarId = selection.location.googleCalendarId;
-        } else if (selection.sport.googleCalendarId) {
-            targetCalendarId = selection.sport.googleCalendarId;
-        }
-        
-        // 4. Create event in Google Calendar
-        const calendarResult = await createGoogleCalendarEvent({ 
-            event: eventPayload, 
-            calendarId: targetCalendarId,
-            sendUpdates: 'all'
-        });
-
-        const calendarData = calendarResult.data as { success: boolean; eventId: string; eventUrl: string; };
-
-        if (!calendarData.success) {
-             throw new Error("La creazione dell'evento su Google Calendar è fallita.");
-        }
-        
-        const { eventId } = calendarData;
-
-        // 5. Update the Firestore document with the calendar info
-        await docRef.update({
-            googleEventId: eventId,
-        });
-
-        // 6. Proceed to confirmation page with all data
         const completeBooking: Booking = {
             ...bookingDataForFirestore,
-            startTime: bookingStartTime, // convert timestamp back to Date for the component
-            googleEventId: eventId,
+            startTime: bookingStartTime,
+            googleEventId: googleEventId,
         };
         
         onBookingConfirmed(completeBooking);
     } catch (error: any) {
         console.error("Error during booking process: ", error);
         
-        // If booking was created in Firestore but Calendar event failed, delete it.
         if (docRef) {
-            console.warn("Calendar event creation failed. Deleting Firestore booking document:", docRef.id);
-            await docRef.delete().catch(deleteError => {
+            console.warn("An error occurred. Deleting Firestore booking document:", docRef.id);
+            await docRef.delete().catch((deleteError: any) => {
                 console.error("Failed to clean up orphaned booking document:", deleteError);
             });
         }

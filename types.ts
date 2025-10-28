@@ -78,4 +78,5 @@ export interface AppConfig {
   slotInterval: number;
   minimumNoticeHours: number;
   googleCalendarIds?: string[];
+  adminEmails?: string[];
 }
