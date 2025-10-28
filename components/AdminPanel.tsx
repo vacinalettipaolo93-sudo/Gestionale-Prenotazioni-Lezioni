@@ -1,17 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
-import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, InformationCircleIcon } from './icons';
-import { getGoogleCalendarList } from '../firebaseConfig';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon } from './icons';
+import { auth, getGoogleCalendarList } from '../firebaseConfig';
 import { GOOGLE_CLIENT_ID, GOOGLE_API_SCOPES } from '../googleConfig';
-
-// Dichiarazioni di tipo per le API globali di Google
-declare global {
-    interface Window {
-        gapi: any;
-        google: any;
-        tokenClient: any;
-    }
-}
+import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 
 interface GoogleCalendar {
     id: string;
@@ -28,7 +20,7 @@ interface GoogleUser {
 interface AdminPanelProps {
     user: GoogleUser | null;
     isAdmin: boolean;
-    onGoogleLogin: (user: GoogleUser) => void;
+    onGoogleLogin: (user: GoogleUser, token: string) => void;
     onGoogleLogout: () => void;
     initialWorkingHours: WorkingHours;
     initialDateOverrides: DateOverrides;
@@ -91,16 +83,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [newOverrideEnd, setNewOverrideEnd] = useState('17:00');
     const [isNewOverrideAvailable, setIsNewOverrideAvailable] = useState(true);
 
-    // --- State for Google OAuth 2.0 Integration ---
-    const [googleScriptsState, setGoogleScriptsState] = useState<'loading' | 'ready' | 'error'>('loading');
-    const [googleTokenClient, setGoogleTokenClient] = useState<any>(null);
-    const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(localStorage.getItem('google_access_token'));
-    
+    // --- State for Google Calendar Integration ---
     const [allGoogleCalendars, setAllGoogleCalendars] = useState<GoogleCalendar[]>([]);
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
 
-    const isBackendConfigured = !!googleAccessToken;
+    const isBackendConfigured = !!localStorage.getItem('google_access_token');
 
     const writableCalendars = useMemo(() => {
         return allGoogleCalendars.filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer');
@@ -118,88 +106,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
     useEffect(() => setLocalAdminEmails(initialAdminEmails), [initialAdminEmails]);
 
-    // --- Google API Initialization ---
-    useEffect(() => {
-        // This effect uses a robust polling and callback mechanism to ensure
-        // Google's API scripts are fully loaded and initialized in the correct order.
-        
-        const intervalId = setInterval(() => {
-            // Wait for both GAPI (for user info) and GIS (for auth) to be available
-            if (window.gapi && window.google?.accounts?.oauth2) {
-                clearInterval(intervalId); // Stop polling
-
-                // Initialize GAPI client library first
-                window.gapi.load('client:oauth2', () => {
-                    console.log("GAPI client and oauth2 libraries initialized.");
-                    
-                    // Now that GAPI is ready, initialize the GIS Token Client
-                    try {
-                        const client = window.google.accounts.oauth2.initTokenClient({
-                            client_id: GOOGLE_CLIENT_ID,
-                            scope: GOOGLE_API_SCOPES,
-                            callback: (tokenResponse: any) => {
-                                if (tokenResponse.error) {
-                                    console.error("Google Auth Error:", tokenResponse);
-                                    let message = 'Errore durante l\'autenticazione con Google.';
-                                    if (tokenResponse.error === 'access_denied') {
-                                        message = 'Accesso negato. Se l\'app è in modalità test, assicurati che il tuo account sia aggiunto agli utenti di test nel tuo progetto Google Cloud.';
-                                    } else if (tokenResponse.error_description) {
-                                        message = tokenResponse.error_description;
-                                    }
-                                    showToast(message, 'error');
-                                    return;
-                                }
-
-                                if (tokenResponse.access_token) {
-                                    setGoogleAccessToken(tokenResponse.access_token);
-                                    localStorage.setItem('google_access_token', tokenResponse.access_token);
-                            
-                                    // Fetch user info after getting token
-                                    window.gapi.client.oauth2.userinfo.get()
-                                    .then((userInfo: any) => {
-                                        onGoogleLogin({
-                                            email: userInfo.result.email,
-                                            name: userInfo.result.name,
-                                            picture: userInfo.result.picture,
-                                        });
-                                        showToast('Login riuscito!', 'success');
-                                    }).catch((error: any) => {
-                                        console.error("Error fetching user info:", error);
-                                        showToast('Errore nel recupero delle info utente.', 'error');
-                                    });
-                                }
-                            },
-                        });
-                        setGoogleTokenClient(client);
-                        setGoogleScriptsState('ready'); // Signal that everything is ready
-                    } catch (error) {
-                        console.error("Error initializing Google Token Client:", error);
-                        showToast("Impossibile inizializzare l'autenticazione Google.", "error");
-                        setGoogleScriptsState('error');
-                    }
-                });
-            }
-        }, 150);
-
-        // Set a timeout to prevent the interval from running indefinitely
-        const timeoutId = setTimeout(() => {
-            clearInterval(intervalId);
-            if (googleScriptsState === 'loading') {
-                console.error("Timeout: Google API scripts did not load within 10 seconds.");
-                showToast("Errore di caricamento dei servizi Google. Per favore, ricarica la pagina.", 'error');
-                setGoogleScriptsState('error');
-            }
-        }, 10000);
-
-        // Cleanup function to clear interval and timeout when the component unmounts
-        return () => {
-            clearInterval(intervalId);
-            clearTimeout(timeoutId);
-        };
-    }, []); // Run only once on component mount
-
 
     const fetchCalendars = useCallback(async () => {
+        const googleAccessToken = localStorage.getItem('google_access_token');
         if (!googleAccessToken || !getGoogleCalendarList) {
             setCalendarError("Autenticazione Google richiesta.");
             return;
@@ -211,7 +120,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             const data = result.data as { calendars: GoogleCalendar[] };
             setAllGoogleCalendars(data.calendars || []);
         } catch (error: any) {
-            console.error("ERRORE CRITICO nel caricamento dei calendari. Oggetto errore completo:", error.message);
+            console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
             const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
             setCalendarError(`Caricamento fallito: ${detailedMessage}`);
 
@@ -222,36 +131,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         } finally {
             setIsLoadingCalendars(false);
         }
-    }, [googleAccessToken, showToast]);
+    }, [showToast]);
 
     useEffect(() => {
         if(isAdmin) {
             const shouldFetch = (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
+            const googleAccessToken = localStorage.getItem('google_access_token');
             if (shouldFetch && googleAccessToken && allGoogleCalendars.length === 0) {
                 fetchCalendars();
             }
         }
-    }, [isAdmin, activeTab, googleAccessToken, fetchCalendars, allGoogleCalendars.length]);
+    }, [isAdmin, activeTab, fetchCalendars, allGoogleCalendars.length]);
 
 
-    // --- Google Auth Handlers ---
-    const handleGoogleConnect = () => {
-        if (googleTokenClient) {
-            googleTokenClient.requestAccessToken({ prompt: 'consent' });
-        } else {
-             showToast('Libreria di autenticazione Google non ancora pronta.', 'error');
+    // --- Google Auth Handlers using Firebase Authentication ---
+    const handleGoogleConnect = async () => {
+        if (!auth) {
+            showToast('Firebase Auth non è inizializzato.', 'error');
+            return;
+        }
+        const provider = new GoogleAuthProvider();
+        provider.addScope(GOOGLE_API_SCOPES);
+
+        try {
+            const result = await signInWithPopup(auth, provider);
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            const token = credential?.accessToken;
+            const loggedInUser = result.user;
+
+            if (token && loggedInUser.email && loggedInUser.displayName) {
+                localStorage.setItem('google_access_token', token);
+                onGoogleLogin({
+                    email: loggedInUser.email,
+                    name: loggedInUser.displayName,
+                    picture: loggedInUser.photoURL || '',
+                }, token);
+                showToast('Login riuscito!', 'success');
+            } else {
+                throw new Error("Informazioni utente o token non ricevuti da Google.");
+            }
+        } catch (error: any) {
+            console.error("Errore durante l'accesso con Google:", error);
+            if (error.code === 'auth/popup-closed-by-user') {
+                showToast('La finestra di accesso è stata chiusa.', 'error');
+            } else if (error.code !== 'auth/cancelled-popup-request') {
+                showToast(`Errore di accesso: ${error.message}`, 'error');
+            }
         }
     };
 
-    const handleGoogleDisconnect = () => {
-        if (googleAccessToken) {
-            window.google.accounts.oauth2.revoke(googleAccessToken, () => {
-                setGoogleAccessToken(null);
-                localStorage.removeItem('google_access_token');
-                setAllGoogleCalendars([]);
-                onGoogleLogout();
-                showToast('Logout effettuato.', 'success');
-            });
+    const handleGoogleDisconnect = async () => {
+        if (!auth) return;
+        try {
+            await signOut(auth);
+            localStorage.removeItem('google_access_token');
+            setAllGoogleCalendars([]);
+            onGoogleLogout();
+            showToast('Logout effettuato.', 'success');
+        } catch (error: any) {
+            console.error("Errore durante il logout:", error);
+            showToast(`Errore di logout: ${error.message}`, 'error');
         }
     };
 
@@ -880,7 +819,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex flex-col sm:flex-row items-center justify-between">
                         <div>
                             <h4 className="font-semibold text-lg text-neutral-800">Stato della connessione</h4>
-                            {googleAccessToken ? (
+                            {isBackendConfigured ? (
                                 <p className="text-green-600 font-semibold mt-1">Collegato come {user?.email}</p>
                             ) : (
                                 <p className="text-neutral-400 mt-1">Non collegato</p>
@@ -902,7 +841,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     )}
                 </div>
 
-                { googleAccessToken && (
+                { isBackendConfigured && (
                  <div className="mt-6 p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
                     <h4 className="font-semibold text-lg text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
                     <p className="text-sm text-neutral-400 mb-4">
@@ -1038,32 +977,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     // --- Render Logic based on Auth State ---
 
-    if (!googleAccessToken) {
+    if (!user) {
         return (
              <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
                 <h2 className="text-2xl font-bold text-neutral-800 mb-2">Pannello di Amministrazione</h2>
                 <p className="text-neutral-400 mb-6">Accedi con il tuo account Google per gestire le impostazioni.</p>
                 <button
                     onClick={handleGoogleConnect}
-                    disabled={googleScriptsState !== 'ready'}
-                    className="bg-blue-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-600 transition-colors disabled:bg-neutral-200 disabled:cursor-not-allowed flex items-center gap-3"
+                    className="bg-blue-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-3"
                 >
                     <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
                     Accedi con Google
                 </button>
-                 {googleScriptsState === 'loading' && (
-                    <p className="text-xs text-neutral-400 mt-4 animate-pulse">
-                        Inizializzazione dei servizi Google in corso...
-                    </p>
-                )}
-                 {googleScriptsState === 'error' && (
-                     <p className="text-xs text-red-500 mt-4">
-                        Impossibile caricare i servizi Google. Prova a ricaricare la pagina.
-                     </p>
-                )}
-                 {GOOGLE_CLIENT_ID.startsWith("IL_TUO") && (
+                 {GOOGLE_CLIENT_ID.startsWith("437487120297") && (
                     <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
-                       <strong>Azione richiesta:</strong> Inserisci il tuo Google Client ID nel file <code className="font-mono bg-amber-200/50 p-1 rounded">googleConfig.ts</code> per abilitare l'accesso.
+                       <strong>Nota:</strong> Se l'app è in modalità test nel tuo progetto Google Cloud, assicurati che il tuo account sia aggiunto agli utenti di test per poter accedere.
                     </div>
                 )}
                  <button onClick={onExitAdminView} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800">

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
@@ -9,8 +8,9 @@ import Toast from './components/Toast';
 import { CogIcon, InformationCircleIcon } from './components/icons';
 import type { LessonSelection, Booking, WorkingHours, DateOverrides, Sport, ConsultantInfo, AppConfig } from './types';
 import { INITIAL_SPORTS_DATA, INITIAL_CONSULTANT_INFO, INITIAL_WORKING_HOURS, INITIAL_DATE_OVERRIDES, INITIAL_SLOT_INTERVAL, INITIAL_MINIMUM_NOTICE_HOURS } from './constants';
-import { db, isFirebaseConfigValid, setInitialAdmin, updateConfig } from './firebaseConfig';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigValid, setInitialAdmin, updateConfig, auth } from './firebaseConfig';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface GoogleUser {
     email: string;
@@ -46,6 +46,29 @@ function App() {
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
   };
+
+  // Listen to Firebase Auth state changes for session persistence
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user && user.email && user.displayName) {
+            // A user is logged in with Firebase. We can update the UI.
+            // The google access token for APIs should be in localStorage.
+            // If it's not, API calls will fail, which is handled gracefully in the components.
+            setGoogleUser({
+                email: user.email,
+                name: user.displayName,
+                picture: user.photoURL || '',
+            });
+        } else {
+            // No user is logged in with Firebase.
+            setGoogleUser(null);
+            setIsAdmin(false);
+            localStorage.removeItem('google_access_token'); // Clean up just in case
+        }
+    });
+    return () => unsubscribe();
+  }, []);
   
   // Check if logged in user is an admin
   useEffect(() => {
@@ -219,18 +242,17 @@ function App() {
     }
   };
 
-   const handleGoogleLogin = async (user: GoogleUser) => {
+   const handleGoogleLogin = async (user: GoogleUser, token: string) => {
     setGoogleUser(user);
     // The onSnapshot listener will tell us if admins are already configured.
     // We only try to set the initial admin if the list is empty.
     if (adminEmails.length === 0) {
-        const googleAccessToken = localStorage.getItem('google_access_token');
-        if (googleAccessToken && setInitialAdmin) {
+        if (token && setInitialAdmin) {
             try {
                 // Call the Firebase Function to set the initial admin.
                 // This is safe to call even if another user is racing to become admin,
                 // as the function is idempotent if admins already exist.
-                await setInitialAdmin({ googleAuthToken: googleAccessToken });
+                await setInitialAdmin({ googleAuthToken: token });
                 showToast(`Benvenuto! ${user.name} è stato impostato come primo amministratore.`, 'success');
                 // The onSnapshot listener will soon receive the update and grant admin access.
             } catch (error: any) {
@@ -245,6 +267,7 @@ function App() {
    const handleGoogleLogout = () => {
     setGoogleUser(null);
     setIsAdmin(false);
+    // The actual sign-out and token removal happens in AdminPanel
    }
   
   const renderLoading = () => (
