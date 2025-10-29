@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
-import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon } from './icons';
+import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon, InformationCircleIcon } from './icons';
 import { auth, getGoogleCalendarList, isFirebaseConfigValid, firebaseConfig } from '../firebaseConfig';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 
@@ -96,7 +95,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [calendarDebugInfo, setCalendarDebugInfo] = useState<any>(null);
 
 
-    const isBackendConfigured = !!localStorage.getItem('google_access_token');
+    const isBackendConfigured = !!user && !!localStorage.getItem('google_access_token');
 
     const writableCalendars = useMemo(() => {
         return allGoogleCalendars.filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer');
@@ -128,10 +127,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
         provider.addScope("https://www.googleapis.com/auth/calendar.events");
         
-        // CRUCIAL FIX: Force the consent screen to appear every time.
-        // This resolves stubborn issues where Google caches old/incomplete permissions.
+        // CRUCIAL FIX: Force the account selection AND consent screen to appear every time.
+        // This is the strongest method to resolve stubborn issues where Google caches old/incomplete permissions.
         provider.setCustomParameters({
-            prompt: 'consent',
+            prompt: 'consent select_account',
         });
 
         try {
@@ -180,6 +179,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             localStorage.removeItem('google_access_token');
             setAllGoogleCalendars([]);
             setCalendarsFetched(false);
+            setCalendarDebugInfo(null);
             onGoogleLogout();
             if(!isSilent) showToast('Logout effettuato.', 'success');
         } catch (error: any) {
@@ -189,13 +189,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             onGoogleLogout();
             setAllGoogleCalendars([]);
             setCalendarsFetched(false);
+            setCalendarDebugInfo(null);
         }
     }, [onGoogleLogout, showToast]);
 
     const handleReAuth = useCallback(async () => {
         await handleGoogleDisconnect(true); // Silently log out first
         handleGoogleConnect(); // Then trigger a new login
-    }, [handleGoogleDisconnect]);
+    }, [handleGoogleDisconnect, handleGoogleConnect]);
 
     const fetchCalendars = useCallback(async () => {
         const googleAccessToken = localStorage.getItem('google_access_token');
@@ -397,7 +398,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         });
     };
     
-    const handleUpdateLocation = (sportIndex: number, ltIndex: number, locIndex: number, field: keyof Omit<Location, 'id' | 'slotInterval'>, value: string) => {
+    const handleUpdateLocation = (sportIndex: number, ltIndex: number, locIndex: number, field: keyof Omit<Location, 'id' | 'slotInterval' | 'googleCalendarId'>, value: string) => {
         updateState(setSportsData, (draft: Sport[]) => {
             (draft[sportIndex].lessonTypes[ltIndex].locations[locIndex] as any)[field] = value;
         });
@@ -807,51 +808,70 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="space-y-4 pl-4">
                             {(sport.lessonTypes || []).map((lt, ltIndex) => (
                                 <div key={lt.id} className="p-3 bg-neutral-100 rounded-md border border-neutral-200">
-                                    <div className="flex justify-between items-start">
+                                    <div className="flex justify-between items-start gap-2">
                                         <div className="flex-1">
                                             <input type="text" value={lt.name} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'name', e.target.value)} className="font-semibold p-1 w-full bg-transparent border-transparent focus:border-primary outline-none border-b-2 text-neutral-800" />
-                                            <textarea value={lt.description} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'description', e.target.value)} className="text-sm text-neutral-600 p-1 w-full mt-1 bg-neutral-50 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary" placeholder="Descrizione..."/>
+                                            <textarea value={lt.description} onChange={e => handleUpdateLessonType(sportIndex, ltIndex, 'description', e.target.value)} className="text-sm text-neutral-400 p-1 w-full bg-transparent border-transparent focus:border-primary outline-none border-b-2 mt-1" placeholder="Descrizione..." rows={2}></textarea>
+
+                                            {/* Options */}
+                                            <div className="mt-3 pl-4 border-l-2 border-neutral-200">
+                                                <h5 className="text-sm font-semibold text-neutral-600 mb-2">Opzioni Durata</h5>
+                                                {(lt.options || []).map((opt, optIndex) => (
+                                                    <div key={opt.id} className="flex items-center gap-2 mb-1">
+                                                        <input 
+                                                            type="number" 
+                                                            value={opt.duration} 
+                                                            onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} 
+                                                            className="w-20 p-1 bg-white border border-neutral-200 rounded-md text-sm"
+                                                        />
+                                                        <span className="text-sm text-neutral-400">minuti</span>
+                                                        <button onClick={() => handleDeleteOption(sportIndex, ltIndex, optIndex)} className="text-neutral-400 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => handleAddOption(sportIndex, ltIndex)} className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"><PlusIcon className="w-3 h-3"/>Aggiungi durata</button>
+                                            </div>
+
+                                            {/* Locations */}
+                                            <div className="mt-3 pl-4 border-l-2 border-neutral-200">
+                                                <h5 className="text-sm font-semibold text-neutral-600 mb-2">Sedi</h5>
+                                                {(lt.locations || []).map((loc, locIndex) => (
+                                                    <div key={loc.id} className="mb-2 p-2 bg-white rounded border border-neutral-200/50">
+                                                        <div className="flex justify-between items-center">
+                                                            <input 
+                                                                type="text" 
+                                                                value={loc.name} 
+                                                                onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} 
+                                                                className="font-medium p-1 w-full bg-transparent border-transparent focus:border-primary outline-none border-b text-sm"
+                                                                placeholder="Nome Sede"
+                                                            />
+                                                            <button onClick={() => handleDeleteLocation(sportIndex, ltIndex, locIndex)} className="text-neutral-400 hover:text-red-500 ml-2"><TrashIcon className="w-4 h-4" /></button>
+                                                        </div>
+                                                        <input 
+                                                            type="text" 
+                                                            value={loc.address} 
+                                                            onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'address', e.target.value)} 
+                                                            className="p-1 w-full bg-transparent border-transparent focus:border-primary outline-none border-b text-xs mt-1"
+                                                            placeholder="Indirizzo"
+                                                        />
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => handleAddLocation(sportIndex, ltIndex)} className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"><PlusIcon className="w-3 h-3"/>Aggiungi sede</button>
+                                            </div>
                                         </div>
-                                        <button onClick={() => handleDeleteLessonType(sportIndex, ltIndex)} className="ml-2 text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
-                                    </div>
-                                    
-                                    {/* Options */}
-                                    <div className="mt-2 pl-4">
-                                        <h4 className="text-sm font-medium text-neutral-400">Opzioni Durata</h4>
-                                        {(lt.options || []).map((opt, optIndex) => (
-                                            <div key={opt.id} className="flex items-center gap-2 mt-1">
-                                                <input type="number" step="15" value={opt.duration} onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} className="w-20 p-1 bg-neutral-50 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
-                                                <span className="text-neutral-600">minuti</span>
-                                                <button onClick={() => handleDeleteOption(sportIndex, ltIndex, optIndex)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
-                                            </div>
-                                        ))}
-                                        <button onClick={() => handleAddOption(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi opzione</button>
-                                    </div>
-                                    
-                                    {/* Locations */}
-                                    <div className="mt-2 pl-4">
-                                        <h4 className="text-sm font-medium text-neutral-400">Sedi</h4>
-                                        {(lt.locations || []).map((loc, locIndex) => (
-                                            <div key={loc.id} className="mt-1 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <input type="text" value={loc.name} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} className="p-1 bg-neutral-50 border border-neutral-200 rounded-md flex-1 focus:ring-primary focus:border-primary text-neutral-800" placeholder="Nome Sede"/>
-                                                    <button onClick={() => handleDeleteLocation(sportIndex, ltIndex, locIndex)} className="text-neutral-400 hover:text-red-500"><XIcon className="w-4 h-4"/></button>
-                                                </div>
-                                                <input type="text" value={loc.address} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'address', e.target.value)} className="p-1 bg-neutral-50 border border-neutral-200 rounded-md w-full focus:ring-primary focus:border-primary text-neutral-800" placeholder="Indirizzo"/>
-                                            </div>
-                                        ))}
-                                        <button onClick={() => handleAddLocation(sportIndex, ltIndex)} className="text-sm text-primary hover:underline mt-1">Aggiungi sede</button>
+                                        <button onClick={() => handleDeleteLessonType(sportIndex, ltIndex)} className="text-neutral-400 hover:text-red-500"><TrashIcon className="w-5 h-5" /></button>
                                     </div>
                                 </div>
                             ))}
-                             <button onClick={() => handleAddLessonType(sportIndex)} className="text-sm font-semibold text-primary hover:underline mt-3">+ Aggiungi Tipo Lezione</button>
+                            <button onClick={() => handleAddLessonType(sportIndex)} className="text-sm text-primary hover:underline mt-4 flex items-center gap-1"><PlusIcon className="w-4 h-4" /> Aggiungi Tipo Lezione</button>
                         </div>
                     </div>
                 ))}
+                <button onClick={handleAddSport} className="w-full text-center p-3 border-2 border-dashed border-neutral-200 rounded-lg text-neutral-400 hover:bg-neutral-100 hover:border-primary hover:text-primary transition-colors">
+                    <PlusIcon className="w-6 h-6 mx-auto" />
+                    <span className="text-sm font-semibold">Aggiungi Sport</span>
+                </button>
             </div>
-            {!isBackendConfigured && <p className="text-sm text-neutral-400 mt-4">Completa la configurazione nella scheda "Integrazioni" per assegnare calendari specifici agli sport.</p>}
-            <button onClick={handleAddSport} className="mt-6 w-full text-center bg-neutral-200/50 hover:bg-neutral-200 text-neutral-800 font-bold py-2 px-4 rounded">+ Aggiungi Sport</button>
-            <div className="mt-8 text-right">
+            <div className="mt-6 text-right">
                 <button 
                     onClick={() => onSaveSportsData(sportsData)} 
                     className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
@@ -861,348 +881,229 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </div>
     );
-
-    const renderIntegrationsTab = () => {
-        const projectId = isFirebaseConfigValid ? firebaseConfig.projectId : '';
-        const consentScreenUrl = `https://console.cloud.google.com/apis/credentials/consent?project=${projectId}`;
-
-        return (
-            <div className="p-6">
-                 <h3 className="text-xl font-semibold mb-2 text-neutral-800">Integrazione Google Calendar</h3>
-                 <p className="text-sm text-neutral-400 mb-6">Collega il tuo Account Google per sincronizzare la disponibilità e creare eventi automaticamente.</p>
-                
-                <div className="p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
-                    <div className="flex flex-col sm:flex-row items-center justify-between">
-                        <div>
-                            <h4 className="font-semibold text-lg text-neutral-800">Stato della connessione</h4>
-                            {isBackendConfigured ? (
-                                <p className="text-green-600 font-semibold mt-1">Collegato come {user?.email}</p>
-                            ) : (
-                                <p className="text-neutral-400 mt-1">Non collegato</p>
-                            )}
-                        </div>
-                        <div className="mt-4 sm:mt-0">
-                           <button
-                                onClick={() => handleGoogleDisconnect()}
-                                className="bg-red-500 text-white font-bold py-2 px-6 rounded-md hover:bg-red-600 transition-colors"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                { isBackendConfigured && (
-                 <div className="mt-6 p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
-                    <h4 className="font-semibold text-lg text-neutral-800 mb-2">Seleziona i calendari per la sincronizzazione</h4>
-                    <p className="text-sm text-neutral-400 mb-4">
-                        Gli impegni presenti nei calendari selezionati verranno considerati come "non disponibile", bloccando gli slot corrispondenti.
-                    </p>
-                    {isLoadingCalendars ? (
-                         <div className="flex items-center justify-center p-4">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                         </div>
-                    ) : calendarError ? (
-                        <div className="p-4 bg-red-900/10 border border-red-400/30 text-red-400 rounded-md text-sm">
-                            <p className="font-bold mb-2">Impossibile Caricare i Calendari</p>
-                            <p>{calendarError}</p>
-                            
-                            {showReauthPrompt ? (
-                                <div className="mt-4">
-                                    <p className="mb-2">Per continuare, l'applicazione ha bisogno di autorizzazioni aggiuntive per leggere i tuoi calendari.</p>
-                                    <button 
-                                        onClick={handleReAuth}
-                                        className="bg-blue-500/80 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600"
-                                    >
-                                        Riconnetti Google Account
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                {calendarError.includes("API is not enabled") && (
-                                    <a 
-                                        href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer" 
-                                        className="font-bold text-red-300 hover:underline mt-2 inline-block"
-                                    >
-                                        Abilita l'API di Google Calendar qui
-                                    </a>
-                                )}
-                                <div className="mt-4">
-                                    <button 
-                                        onClick={fetchCalendars} 
-                                        className="bg-red-500/20 text-red-200 font-semibold py-1 px-3 rounded-md hover:bg-red-500/40"
-                                    >
-                                        Riprova
-                                    </button>
-                                </div>
-                                </>
-                            )}
-                        </div>
-                    ) : (calendarsFetched && allGoogleCalendars.length > 0) ? (
-                        <>
-                         <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
-                                {allGoogleCalendars.map(cal => (
-                                    <label key={cal.id} className="flex items-center p-2 rounded-md hover:bg-neutral-50 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedCalendarIds.includes(cal.id)}
-                                        onChange={() => handleCalendarSelectionChange(cal.id)}
-                                        className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-50"
-                                    />
-                                    <span className="ml-3 text-neutral-600">{cal.summary}</span>
-                                    { cal.primary && <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full font-semibold">Primario</span> }
-                                    { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
-                                        <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
-                                    }
-                                    </label>
-                                ))}
-                            </div>
-                             <div className="mt-6 text-right">
-                                <button 
-                                    onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
-                                    className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
-                                >
-                                    Salva Calendari Selezionati
-                                </button>
-                            </div>
-                        </>
-                    ) : (calendarsFetched && allGoogleCalendars.length === 0) ? (
-                        <div className="p-4 bg-amber-900/10 border border-amber-400/30 text-amber-400 rounded-md text-sm">
-                            <p className="font-bold mb-2 text-amber-200">Nessun calendario trovato</p>
-                            <p className="mb-3">Anche dopo aver dato il consenso, a volte i calendari non appaiono. Ecco le cause più comuni e le soluzioni:</p>
-                            <ul className="list-disc list-inside space-y-3 mb-4">
-                                <li>
-                                    <span className="font-semibold">App in modalità "Test":</span> Se l'app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto agli "Utenti di test". Questa è la causa più probabile.
-                                    <a 
-                                    href={consentScreenUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block text-blue-400 hover:underline mt-1"
-                                    >
-                                        → Vai allo Schermo di Consenso per verificare e aggiungere il tuo utente
-                                    </a>
-                                </li>
-                                <li>
-                                    <span className="font-semibold">Problema di "Cache" dei Permessi:</span> Google potrebbe usare un'autorizzazione vecchia.
-                                    <br />
-                                    <span className="font-bold text-amber-200">Soluzione:</span> Prova a fare <strong onClick={() => handleGoogleDisconnect()} className="underline cursor-pointer">Logout</strong> e a ricollegarti. Il sistema ora forza una nuova richiesta di permessi ogni volta.
-                                </li>
-                            </ul>
-                            
-                            <div className="flex items-center gap-4 mt-4">
-                                <button 
-                                    onClick={fetchCalendars} 
-                                    className="bg-amber-500/20 text-amber-200 font-semibold py-2 px-4 rounded-md hover:bg-amber-500/40"
-                                >
-                                    Ricarica Lista
-                                </button>
-                            </div>
-                            {calendarDebugInfo && (
-                                <div className="mt-6 p-4 bg-neutral-800 text-neutral-300 rounded-lg text-left">
-                                    <h4 className="font-semibold text-neutral-100 mb-2">Dati Diagnostici dalla Risposta API</h4>
-                                    <p className="text-xs text-neutral-400 mb-2">
-                                        Questi dati mostrano la risposta ricevuta dai server di Google. Se 'statusCode' è 200 e 'itemCount' è 0, significa che la connessione ha avuto successo ma Google non ha restituito calendari, confermando un problema di configurazione dell'account o del progetto Google Cloud.
-                                    </p>
-                                    <pre className="text-xs whitespace-pre-wrap bg-neutral-900 p-2 rounded">
-                                        {JSON.stringify(calendarDebugInfo, null, 2)}
-                                    </pre>
-                                </div>
-                            )}
-                        </div>
-                    ) : null}
-                 </div>
-                )}
-            </div>
-        );
-    };
-
-    const handleAddAdmin = (e: React.FormEvent) => {
+    
+    const handleAddAdminEmail = (e: React.FormEvent) => {
         e.preventDefault();
-        const emailToAdd = newAdminEmail.trim().toLowerCase();
-        if (emailToAdd && /^\S+@\S+\.\S+$/.test(emailToAdd)) { // Basic email validation
-            if (localAdminEmails.includes(emailToAdd)) {
-                showToast('Questo utente è già un amministratore.', 'error');
-                return;
-            }
-            const updatedEmails = [...localAdminEmails, emailToAdd];
-            onSaveAdminEmails(updatedEmails);
+        if (newAdminEmail && !localAdminEmails.map(e => e.toLowerCase()).includes(newAdminEmail.toLowerCase())) {
+            setLocalAdminEmails([...localAdminEmails, newAdminEmail.trim()]);
             setNewAdminEmail('');
-        } else {
-            showToast('Inserisci un indirizzo email valido.', 'error');
         }
     };
 
-    const handleRemoveAdmin = (emailToRemove: string) => {
-        if (localAdminEmails.length <= 1) {
-            showToast("Non puoi rimuovere l'unico amministratore.", 'error');
-            return;
-        }
-        if (emailToRemove === user?.email) {
-            showToast('Non puoi rimuovere te stesso.', 'error');
-            return;
-        }
-        const updatedEmails = localAdminEmails.filter(email => email !== emailToRemove);
-        onSaveAdminEmails(updatedEmails);
+    const handleRemoveAdminEmail = (emailToRemove: string) => {
+        setLocalAdminEmails(localAdminEmails.filter(email => email !== emailToRemove));
     };
 
     const renderAdminsTab = () => (
-        <div className="p-6 max-w-2xl mx-auto">
-            <h3 className="text-xl font-semibold mb-2 text-neutral-800">Gestione Amministratori</h3>
-            <p className="text-sm text-neutral-400 mb-6">Aggiungi o rimuovi utenti che possono accedere a questo pannello di amministrazione.</p>
-            
-            <div className="bg-neutral-50 p-6 rounded-lg border border-neutral-200 mb-6">
-                <h4 className="font-semibold text-lg text-neutral-800 mb-4">Aggiungi nuovo amministratore</h4>
-                <form onSubmit={handleAddAdmin} className="flex items-center gap-4">
-                    <div className="relative flex-grow">
-                        <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                        <input
-                            type="email"
-                            placeholder="email@esempio.com"
-                            value={newAdminEmail}
-                            onChange={(e) => setNewAdminEmail(e.target.value)}
-                            className="w-full pl-10 p-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
-                        />
-                    </div>
-                    <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 flex items-center">
-                        <PlusIcon className="w-5 h-5 mr-1"/> Aggiungi
-                    </button>
-                </form>
-            </div>
-
+         <div className="p-6">
+            <h3 className="text-xl font-semibold mb-4 text-neutral-800">Gestione Amministratori</h3>
             <div className="bg-neutral-50 p-6 rounded-lg border border-neutral-200">
-                <h4 className="font-semibold text-lg text-neutral-800 mb-4">Amministratori attuali</h4>
-                <div className="space-y-3">
+                <p className="text-sm text-neutral-400 mb-4">
+                    Gli utenti in questa lista possono accedere a questo pannello di amministrazione e modificare le impostazioni.
+                </p>
+                
+                <div className="space-y-2 mb-6">
                     {localAdminEmails.map((email) => (
-                        <div key={email} className="flex items-center justify-between p-3 bg-neutral-100 border border-neutral-200 rounded-md">
-                            <div className="flex items-center gap-3">
-                                <img src={user?.email === email ? user.picture : `https://i.pravatar.cc/150?u=${email}`} alt={email} className="w-8 h-8 rounded-full" />
-                                <span className="font-medium text-neutral-800">{email}</span>
-                                {user?.email === email && <span className="text-xs text-primary bg-primary-text px-2 py-1 rounded-full">(Tu)</span>}
+                        <div key={email} className="flex items-center justify-between p-3 bg-neutral-100 rounded-md border border-neutral-200">
+                            <div className="flex items-center gap-2">
+                                <EmailIcon className="w-5 h-5 text-neutral-400" />
+                                <span className="text-neutral-800">{email}</span>
                             </div>
-                            <button 
-                                onClick={() => handleRemoveAdmin(email)}
-                                disabled={localAdminEmails.length <= 1 || user?.email === email}
-                                className="text-neutral-400 hover:text-red-500 disabled:text-neutral-200 disabled:cursor-not-allowed"
-                                title={localAdminEmails.length <= 1 ? "Impossibile rimuovere l'unico admin" : user?.email === email ? "Non puoi rimuovere te stesso" : "Rimuovi admin"}
-                            >
+                            <button onClick={() => handleRemoveAdminEmail(email)} className="text-neutral-400 hover:text-red-500" disabled={localAdminEmails.length <= 1}>
                                 <TrashIcon className="w-5 h-5"/>
                             </button>
                         </div>
                     ))}
+                    {localAdminEmails.length <= 1 && <p className="text-xs text-neutral-400 mt-2">Deve esserci almeno un amministratore.</p>}
+                </div>
+
+                <form onSubmit={handleAddAdminEmail} className="flex items-center gap-4">
+                    <input 
+                        type="email"
+                        value={newAdminEmail}
+                        onChange={(e) => setNewAdminEmail(e.target.value)}
+                        placeholder="nuovo.admin@esempio.com"
+                        className="flex-grow p-2 bg-white border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
+                    />
+                    <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 flex items-center">
+                        <PlusIcon className="w-5 h-5 mr-1"/> Aggiungi
+                    </button>
+                </form>
+
+                 <div className="mt-6 text-right">
+                    <button 
+                        onClick={() => onSaveAdminEmails(localAdminEmails)} 
+                        className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                        disabled={localAdminEmails.length < 1}
+                    >
+                        Salva Lista Admin
+                    </button>
                 </div>
             </div>
         </div>
     );
-
-    const tabs = [
-        { id: 'profile', label: 'Profilo' },
-        { id: 'hours', label: 'Orari e Disponibilità' },
-        { id: 'services', label: 'Servizi' },
-        { id: 'integrations', label: 'Integrazioni'},
-        { id: 'admins', label: 'Amministratori' }
-    ];
-
     
-    // --- Render Logic based on Auth State ---
+    const renderIntegrationsTab = () => (
+        <div className="p-6">
+            <h3 className="text-xl font-semibold mb-4 text-neutral-800">Integrazione Google Calendar</h3>
+            <div className="bg-neutral-50 p-6 rounded-lg border border-neutral-200">
+                <p className="mb-4 text-neutral-400">
+                    Collega il tuo account Google per sincronizzare automaticamente le prenotazioni con il tuo calendario e verificare le disponibilità in tempo reale, evitando sovrapposizioni.
+                </p>
+                {isBackendConfigured && user ? (
+                    <div>
+                        <div className="flex items-center gap-4 p-4 bg-neutral-100 rounded-lg border border-neutral-200 mb-6">
+                             <img src={user.picture} alt={user.name} className="w-12 h-12 rounded-full" />
+                             <div>
+                                <p className="font-semibold text-neutral-800">{user.name}</p>
+                                <p className="text-sm text-neutral-400">{user.email}</p>
+                             </div>
+                             <button onClick={() => handleGoogleDisconnect()} className="ml-auto bg-red-100 text-red-600 font-semibold py-2 px-4 rounded-md hover:bg-red-200 transition-colors flex items-center gap-2">
+                                 <ArrowLeftOnRectangleIcon className="w-5 h-5"/>
+                                 Disconnetti
+                             </button>
+                        </div>
+                        
+                        <h4 className="text-lg font-semibold mb-2 text-neutral-800">Seleziona calendari da controllare</h4>
+                        <p className="text-sm text-neutral-400 mb-4">
+                            Il sistema controllerà la disponibilità su tutti i calendari selezionati. Le nuove prenotazioni verranno create sul calendario associato allo sport/sede, o sul calendario primario se non specificato.
+                        </p>
+                        
+                        {isLoadingCalendars && <div className="flex justify-center items-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}
+
+                        {calendarError && (
+                             <div className="p-4 bg-red-900/10 border border-red-400/30 text-red-400 rounded-md text-sm mb-4">
+                                <p className="font-bold mb-2">Errore nel Caricamento dei Calendari</p>
+                                <p>{calendarError}</p>
+                                {showReauthPrompt && (
+                                     <button onClick={handleReAuth} className="mt-3 bg-red-500 text-white font-semibold py-1 px-3 rounded-md hover:bg-red-600 transition-colors">
+                                        Riautorizza
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {calendarsFetched && !isLoadingCalendars && !calendarError && allGoogleCalendars.length === 0 && (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/30 text-amber-600 rounded-lg text-sm mb-4">
+                                <div className="flex">
+                                    <InformationCircleIcon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="font-bold mb-1">Nessun Calendario Trovato</p>
+                                        <p>
+                                            Il tuo account Google è connesso, ma non abbiamo trovato calendari. Questo può accadere se l'applicazione non ha i permessi necessari.
+                                        </p>
+                                        <p className="mt-2">
+                                            Prova a <button onClick={handleReAuth} className="font-bold underline hover:text-amber-700">riconnettere il tuo account</button> per forzare l'aggiornamento dei permessi.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {allGoogleCalendars.length > 0 && (
+                            <div className="space-y-3">
+                                {allGoogleCalendars.map(cal => (
+                                    <label key={cal.id} className="flex items-center p-3 bg-neutral-100 rounded-md border border-neutral-200 cursor-pointer hover:bg-neutral-200/50">
+                                        <input 
+                                            type="checkbox"
+                                            checked={selectedCalendarIds.includes(cal.id)}
+                                            onChange={() => handleCalendarSelectionChange(cal.id)}
+                                            className="h-4 w-4 text-primary focus:ring-primary border-neutral-200 rounded"
+                                        />
+                                        <span className="ml-3 text-neutral-800">{cal.summary}{cal.primary && ' (Primario)'}</span>
+                                        <span className="ml-auto text-xs text-neutral-400 capitalize">{cal.accessRole.replace('Reader', '')}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-6 text-right">
+                             <button 
+                                onClick={() => onSaveSelectedCalendars(selectedCalendarIds)} 
+                                className="bg-primary text-white font-bold py-2 px-6 rounded-md hover:bg-primary-dark transition-colors"
+                            >
+                                Salva Selezione Calendari
+                            </button>
+                        </div>
+
+                    </div>
+                ) : (
+                    <div>
+                        <button onClick={handleGoogleConnect} className="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-3">
+                            <svg className="w-6 h-6" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
+                            Connetti con Google
+                        </button>
+                        {loginError && <p className="text-red-500 text-sm mt-4 text-center">{loginError}</p>}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+    
     const renderContent = () => {
-        if (!user) {
+        if (!user || !isAdmin) {
             return (
-                <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
-                    <h2 className="text-2xl font-bold text-neutral-800 mb-2">Pannello di Amministrazione</h2>
-                    <p className="text-neutral-400 mb-6">Accedi con il tuo account Google per gestire le impostazioni.</p>
-                    <button
-                        onClick={handleGoogleConnect}
-                        className="bg-blue-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-3"
-                    >
-                        <svg className="w-5 h-5" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.222,0-9.519-3.536-11.083-8.192l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574	l6.19,5.238C42.022,35.283,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
+                <div className="p-8 text-center flex flex-col items-center justify-center h-full">
+                    <h2 className="text-2xl font-bold text-neutral-800 mb-2">Accesso Amministratore</h2>
+                    <p className="text-neutral-400 mb-6">Accedi con un account Google autorizzato per gestire le prenotazioni.</p>
+                    <button onClick={handleGoogleConnect} className="bg-blue-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-3">
+                         <svg className="w-6 h-6" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
                         Accedi con Google
                     </button>
-                    {loginError && (
-                        <div className="mt-6 p-4 bg-red-900/10 border border-red-400/30 text-red-500 rounded-md text-sm max-w-md text-left">
-                            <p className="font-bold mb-2">Impossibile accedere</p>
-                            <p>{loginError}</p>
-                        </div>
-                    )}
-                    <div className="mt-6 p-3 bg-amber-500/10 text-amber-900 border border-amber-500/20 rounded-md text-sm max-w-md">
-                    <strong>Nota:</strong> Se l'app è in modalità test nel tuo progetto Google Cloud, assicurati che il tuo account sia aggiunto agli utenti di test per poter accedere.
-                    </div>
+                    {loginError && <p className="text-red-500 text-sm mt-4">{loginError}</p>}
                 </div>
             );
         }
+
+        const tabs = [
+            { id: 'integrations', label: 'Integrazioni' },
+            { id: 'services', label: 'Servizi & Sedi' },
+            { id: 'hours', label: 'Orari & Disponibilità' },
+            { id: 'profile', label: 'Profilo Pubblico' },
+            { id: 'admins', label: 'Amministratori' },
+        ];
         
-        if (!isAdmin) {
-            return (
-                <div className="flex flex-col items-center justify-center h-full bg-neutral-100 p-8 text-center">
-                    <div className="w-16 h-16 bg-red-100 flex items-center justify-center rounded-full mb-4">
-                        <XIcon className="w-10 h-10 text-red-500" />
-                    </div>
-                    <h2 className="text-2xl font-bold text-neutral-800 mb-2">Accesso Negato</h2>
-                    <p className="text-neutral-400 mb-6 max-w-md">
-                        L'account <strong className="text-neutral-600">{user?.email}</strong> non è autorizzato ad accedere a questa sezione. Contatta l'amministratore per richiedere l'accesso.
-                    </p>
-                    <button
-                        onClick={() => handleGoogleDisconnect()}
-                        className="bg-neutral-500 text-white font-bold py-2 px-6 rounded-md hover:bg-neutral-600 transition-colors"
-                    >
-                        Logout
-                    </button>
-                </div>
-            );
-        }
-
-        // --- Render Full Admin Panel if Logged in and Authorized ---
         return (
-            <div className="flex flex-col md:flex-row h-full bg-neutral-100 text-neutral-600">
-                {/* Sidebar */}
-                <nav className="w-full md:w-64 bg-neutral-50 shadow-md p-4 flex flex-col border-r border-neutral-200 flex-shrink-0">
-                    <div className="flex flex-row md:flex-col flex-wrap md:flex-nowrap gap-1 md:space-y-2 flex-grow">
+            <div className="flex h-full">
+                <aside className="w-64 bg-neutral-100 p-4 border-r border-neutral-200">
+                    <h2 className="text-lg font-bold text-primary mb-6">Pannello Admin</h2>
+                    <nav className="flex flex-col space-y-2">
                         {tabs.map(tab => (
-                            <button
-                                key={tab.id}
+                             <button 
+                                key={tab.id} 
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`w-full text-left font-semibold p-3 rounded-md transition-colors text-sm sm:text-base ${
-                                    activeTab === tab.id ? 'bg-primary text-white shadow' : 'text-neutral-600 hover:bg-neutral-200/50'
-                                }`}
-                            >
+                                className={`w-full text-left px-4 py-2 rounded-md font-semibold transition-colors ${activeTab === tab.id ? 'bg-primary text-white' : 'text-neutral-600 hover:bg-neutral-200/50'}`}
+                             >
                                 {tab.label}
-                            </button>
+                             </button>
                         ))}
-                    </div>
-                    <button 
-                        onClick={onExitAdminView} 
-                        className="w-full text-left font-semibold p-3 rounded-md transition-colors text-neutral-600 hover:bg-neutral-200/50 mt-4 flex items-center gap-2"
-                    >
-                        <ArrowLeftOnRectangleIcon className="w-5 h-5" />
-                        Esci dal Pannello
-                    </button>
-                </nav>
-
-                {/* Content */}
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-                    {activeTab === 'profile' && renderProfileTab()}
-                    {activeTab === 'hours' && renderHoursTab()}
-                    {activeTab === 'services' && renderServicesTab()}
+                    </nav>
+                </aside>
+                <div className="flex-1 bg-white overflow-y-auto">
                     {activeTab === 'integrations' && renderIntegrationsTab()}
+                    {activeTab === 'services' && renderServicesTab()}
+                    {activeTab === 'hours' && renderHoursTab()}
+                    {activeTab === 'profile' && renderProfileTab()}
                     {activeTab === 'admins' && renderAdminsTab()}
-                </main>
+                </div>
             </div>
         );
     };
 
+
     return (
-        <div className="relative h-full w-full">
-            <button 
-                onClick={onExitAdminView} 
-                className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800 z-50 p-2 bg-neutral-50/50 rounded-full hover:bg-neutral-100"
-                aria-label="Chiudi pannello di amministrazione"
-            >
-                <XIcon className="w-6 h-6"/>
-            </button>
-            {renderContent()}
-        </div>
+        <>
+            <header className="bg-neutral-50 border-b border-neutral-200 relative z-10 p-4 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-neutral-800">Impostazioni</h2>
+                <button onClick={onExitAdminView} className="p-2 rounded-full hover:bg-neutral-200/50">
+                    <XIcon className="w-6 h-6 text-neutral-400"/>
+                </button>
+            </header>
+            <main className="flex-grow overflow-hidden">
+                {renderContent()}
+            </main>
+        </>
     );
-};
+}
 
 export default AdminPanel;
