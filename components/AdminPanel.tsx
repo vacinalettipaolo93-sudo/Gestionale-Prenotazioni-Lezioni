@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon } from './icons';
-import { auth, getGoogleCalendarList } from '../firebaseConfig';
+import { auth, getGoogleCalendarList, isFirebaseConfigValid, firebaseConfig } from '../firebaseConfig';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 
 interface GoogleCalendar {
@@ -90,6 +90,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
     const [calendarError, setCalendarError] = useState<string | null>(null);
     const [calendarsFetched, setCalendarsFetched] = useState(false);
+    const [showReauthPrompt, setShowReauthPrompt] = useState(false);
 
 
     const isBackendConfigured = !!localStorage.getItem('google_access_token');
@@ -109,70 +110,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setMinimumNoticeHours(initialMinimumNoticeHours), [initialMinimumNoticeHours]);
     useEffect(() => setSelectedCalendarIds(initialSelectedCalendarIds), [initialSelectedCalendarIds]);
     useEffect(() => setLocalAdminEmails(initialAdminEmails), [initialAdminEmails]);
-
-
-    const handleGoogleDisconnect = useCallback(async () => {
-        if (!auth) return;
-        try {
-            await signOut(auth);
-            // The onAuthStateChanged listener in App.tsx will handle the primary state cleanup.
-            // We can also clear things here for a faster UI response.
-            localStorage.removeItem('google_access_token');
-            setAllGoogleCalendars([]);
-            setCalendarsFetched(false);
-            onGoogleLogout();
-            showToast('Logout effettuato.', 'success');
-        } catch (error: any) {
-            console.error("Errore durante il logout:", error);
-            showToast(`Errore di logout: ${error.message}. Tento un logout forzato.`, 'error');
-            // --- Fallback for when signOut fails ---
-            // Manually clear everything to get the user out of the stuck state.
-            localStorage.removeItem('google_access_token');
-            onGoogleLogout(); // This will reset the state in App.tsx
-            setAllGoogleCalendars([]);
-            setCalendarsFetched(false);
-        }
-    }, [onGoogleLogout, showToast]);
-
-    const fetchCalendars = useCallback(async () => {
-        const googleAccessToken = localStorage.getItem('google_access_token');
-        if (!googleAccessToken || !getGoogleCalendarList) {
-            setCalendarError("Autenticazione Google richiesta.");
-            return;
-        }
-        setIsLoadingCalendars(true);
-        setCalendarError(null);
-        try {
-            const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
-            const data = result?.data as { calendars?: GoogleCalendar[] };
-            setAllGoogleCalendars(data?.calendars || []);
-            setCalendarsFetched(true);
-        } catch (error: any) {
-            console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
-            const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
-            setCalendarError(`Caricamento fallito: ${detailedMessage}`);
-            setCalendarsFetched(false); // Ensure we can retry fetching
-
-            const errorMessage = typeof error.message === 'string' ? error.message.toLowerCase() : '';
-            if (error.code === 'unauthenticated' || errorMessage.includes('token') || errorMessage.includes('credentials')) {
-                handleGoogleDisconnect();
-                showToast('Sessione Google scaduta o non valida. Riconnettiti.', 'error');
-            }
-        } finally {
-            setIsLoadingCalendars(false);
-        }
-    }, [showToast, handleGoogleDisconnect]);
-
-    useEffect(() => {
-        if(isAdmin) {
-            const shouldFetch = (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
-            const googleAccessToken = localStorage.getItem('google_access_token');
-            if (shouldFetch && googleAccessToken && !calendarsFetched) {
-                fetchCalendars();
-            }
-        }
-    }, [isAdmin, activeTab, fetchCalendars, calendarsFetched]);
-
 
     // --- Google Auth Handlers using Firebase Authentication ---
     const handleGoogleConnect = async () => {
@@ -199,6 +136,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     name: loggedInUser.displayName,
                     picture: loggedInUser.photoURL || '',
                 }, token);
+                // After successful login, reset calendar state to force a refetch
+                setCalendarsFetched(false);
+                setAllGoogleCalendars([]);
+                setShowReauthPrompt(false);
+                setCalendarError(null);
                 showToast('Login riuscito!', 'success');
             } else {
                 throw new Error("Informazioni utente o token non ricevuti da Google.");
@@ -208,20 +150,88 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             let message = `Errore di accesso: ${error.message} (codice: ${error.code})`;
             
             if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-                // Don't show an error if the user intentionally closes the popup.
                 return;
             } else if (error.code === 'auth/unauthorized-domain') {
-                message = "Questo dominio non è autorizzato per l'accesso. Vai alla console Firebase > Authentication > Sign-in method > Google e aggiungi questo dominio alla lista di quelli autorizzati.";
+                message = "Questo dominio non è autorizzato per l'accesso. Controlla la console Firebase.";
             } else if (error.code === 'auth/popup-blocked') {
                 message = 'La finestra di popup è stata bloccata dal browser. Abilita i popup per questo sito e riprova.';
-            } else if (error.code === 'auth/operation-not-allowed') {
-                message = "L'accesso con Google non è abilitato per questo progetto. Abilitalo nella console Firebase > Authentication > Sign-in method.";
             }
         
             setLoginError(message);
-            showToast(message, 'error'); // Keep toast as secondary notification
+            showToast(message, 'error');
         }
     };
+
+    const handleGoogleDisconnect = useCallback(async (isSilent = false) => {
+        if (!auth) return;
+        try {
+            await signOut(auth);
+            localStorage.removeItem('google_access_token');
+            setAllGoogleCalendars([]);
+            setCalendarsFetched(false);
+            onGoogleLogout();
+            if(!isSilent) showToast('Logout effettuato.', 'success');
+        } catch (error: any) {
+            console.error("Errore durante il logout:", error);
+            if(!isSilent) showToast(`Errore di logout: ${error.message}. Tento un logout forzato.`, 'error');
+            localStorage.removeItem('google_access_token');
+            onGoogleLogout();
+            setAllGoogleCalendars([]);
+            setCalendarsFetched(false);
+        }
+    }, [onGoogleLogout, showToast]);
+
+    const handleReAuth = useCallback(async () => {
+        await handleGoogleDisconnect(true); // Silently log out first
+        handleGoogleConnect(); // Then trigger a new login
+    }, [handleGoogleDisconnect, handleGoogleConnect]);
+
+    const fetchCalendars = useCallback(async () => {
+        const googleAccessToken = localStorage.getItem('google_access_token');
+        if (!googleAccessToken || !getGoogleCalendarList) {
+            setCalendarError("Autenticazione Google richiesta.");
+            return;
+        }
+        setIsLoadingCalendars(true);
+        setCalendarError(null);
+        setShowReauthPrompt(false);
+        try {
+            const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
+            const data = result?.data as { calendars?: GoogleCalendar[] };
+            setAllGoogleCalendars(data?.calendars || []);
+            setCalendarsFetched(true);
+        } catch (error: any) {
+            console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
+            const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
+            
+            const errorMessage = (detailedMessage || '').toLowerCase();
+            if (errorMessage.includes('insufficient permission') || errorMessage.includes('required scopes')) {
+                setCalendarError("L'applicazione non ha i permessi necessari per leggere i tuoi calendari.");
+                setShowReauthPrompt(true);
+            } else {
+                 setCalendarError(`Caricamento fallito: ${detailedMessage}`);
+            }
+            
+            setCalendarsFetched(true); // We consider it "fetched" even if it's an error, to show the error message.
+
+            if (error.code === 'unauthenticated' || errorMessage.includes('token') || errorMessage.includes('credentials')) {
+                handleGoogleDisconnect();
+                showToast('Sessione Google scaduta o non valida. Riconnettiti.', 'error');
+            }
+        } finally {
+            setIsLoadingCalendars(false);
+        }
+    }, [showToast, handleGoogleDisconnect]);
+
+    useEffect(() => {
+        if(isAdmin) {
+            const shouldFetch = (activeTab === 'integrations' || activeTab === 'services' || activeTab === 'hours');
+            const googleAccessToken = localStorage.getItem('google_access_token');
+            if (shouldFetch && googleAccessToken && !calendarsFetched && !isLoadingCalendars) {
+                fetchCalendars();
+            }
+        }
+    }, [isAdmin, activeTab, fetchCalendars, calendarsFetched, isLoadingCalendars]);
 
 
     // --- State Update Handlers ---
@@ -839,6 +849,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
 
     const renderIntegrationsTab = () => {
+        const projectId = isFirebaseConfigValid ? firebaseConfig.projectId : '';
+        const consentScreenUrl = `https://console.cloud.google.com/apis/credentials/consent?project=${projectId}`;
+
         return (
             <div className="p-6">
                  <h3 className="text-xl font-semibold mb-2 text-neutral-800">Integrazione Google Calendar</h3>
@@ -856,7 +869,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div className="mt-4 sm:mt-0">
                            <button
-                                onClick={handleGoogleDisconnect}
+                                onClick={() => handleGoogleDisconnect()}
                                 className="bg-red-500 text-white font-bold py-2 px-6 rounded-md hover:bg-red-600 transition-colors"
                             >
                                 Logout
@@ -879,26 +892,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="p-4 bg-red-900/10 border border-red-400/30 text-red-400 rounded-md text-sm">
                             <p className="font-bold mb-2">Impossibile Caricare i Calendari</p>
                             <p>{calendarError}</p>
-                            {calendarError.includes("API is not enabled") && (
-                                <a 
-                                    href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="font-bold text-red-300 hover:underline mt-2 inline-block"
-                                >
-                                    Abilita l'API di Google Calendar qui
-                                </a>
+                            
+                            {showReauthPrompt ? (
+                                <div className="mt-4">
+                                    <p className="mb-2">Per continuare, l'applicazione ha bisogno di autorizzazioni aggiuntive per leggere i tuoi calendari.</p>
+                                    <button 
+                                        onClick={handleReAuth}
+                                        className="bg-blue-500/80 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600"
+                                    >
+                                        Riconnetti Google Account
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                {calendarError.includes("API is not enabled") && (
+                                    <a 
+                                        href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="font-bold text-red-300 hover:underline mt-2 inline-block"
+                                    >
+                                        Abilita l'API di Google Calendar qui
+                                    </a>
+                                )}
+                                <div className="mt-4">
+                                    <button 
+                                        onClick={fetchCalendars} 
+                                        className="bg-red-500/20 text-red-200 font-semibold py-1 px-3 rounded-md hover:bg-red-500/40"
+                                    >
+                                        Riprova
+                                    </button>
+                                </div>
+                                </>
                             )}
-                            <div className="mt-4">
-                                <button 
-                                    onClick={fetchCalendars} 
-                                    className="bg-red-500/20 text-red-200 font-semibold py-1 px-3 rounded-md hover:bg-red-500/40"
-                                >
-                                    Riprova
-                                </button>
-                            </div>
                         </div>
-                    ) : allGoogleCalendars.length > 0 ? (
+                    ) : (calendarsFetched && allGoogleCalendars.length > 0) ? (
                         <>
                          <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">
                                 {allGoogleCalendars.map(cal => (
@@ -925,9 +953,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                             </div>
                         </>
-                    ) : (
-                        <p className="text-neutral-400 text-center p-4">Nessun calendario trovato nel tuo account Google.</p>
-                    )}
+                    ) : (calendarsFetched && allGoogleCalendars.length === 0) ? (
+                        <div className="p-4 bg-amber-900/10 border border-amber-400/30 text-amber-400 rounded-md text-sm">
+                            <p className="font-bold mb-2 text-amber-200">Nessun calendario trovato</p>
+                            <p className="mb-3">Questo può succedere per due motivi principali:</p>
+                            <ul className="list-disc list-inside space-y-2 mb-4">
+                                <li>Il tuo account Google ({user?.email}) non ha calendari.</li>
+                                <li>
+                                    <span className="font-semibold">Causa più probabile:</span> Se la tua app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto alla lista degli "Utenti di test".
+                                </li>
+                            </ul>
+                            <p className="mb-3">
+                                Per risolvere, vai allo Schermo di Consenso OAuth del tuo progetto e aggiungi il tuo indirizzo email.
+                            </p>
+                            <div className="flex items-center gap-4">
+                                <a 
+                                    href={consentScreenUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="bg-blue-500/80 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600"
+                                >
+                                    Vai allo Schermo di Consenso
+                                </a>
+                                <button 
+                                    onClick={fetchCalendars} 
+                                    className="bg-amber-500/20 text-amber-200 font-semibold py-2 px-4 rounded-md hover:bg-amber-500/40"
+                                >
+                                    Ricarica Lista
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
                  </div>
                 )}
             </div>
@@ -1059,7 +1115,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         L'account <strong className="text-neutral-600">{user?.email}</strong> non è autorizzato ad accedere a questa sezione. Contatta l'amministratore per richiedere l'accesso.
                     </p>
                     <button
-                        onClick={handleGoogleDisconnect}
+                        onClick={() => handleGoogleDisconnect()}
                         className="bg-neutral-500 text-white font-bold py-2 px-6 rounded-md hover:bg-neutral-600 transition-colors"
                     >
                         Logout

@@ -27,13 +27,11 @@ const handleApiError = (error, functionName) => {
 
     let specificMessage = "An unexpected server error occurred.";
     let statusCode = 500;
+    const errorDetails = error.response?.data?.error;
 
-    if (error.response?.data?.error) {
-        specificMessage = error.response.data.error.message || specificMessage;
-        statusCode = error.response.data.error.code || statusCode;
-    } else if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
-        specificMessage = error.errors.map((e) => e.message).join('; ');
-        statusCode = error.code || statusCode;
+    if (errorDetails) {
+        specificMessage = errorDetails.message || specificMessage;
+        statusCode = errorDetails.code || statusCode;
     } else if (error.message) {
         specificMessage = error.message;
     }
@@ -41,9 +39,13 @@ const handleApiError = (error, functionName) => {
     let httpsErrorCode = 'internal';
     if (statusCode === 403) {
         httpsErrorCode = 'permission-denied';
-        const errorMessage = (error.response?.data?.error?.message || '').toLowerCase();
+        const reason = errorDetails?.details?.[0]?.reason || '';
+        const errorMessage = (errorDetails?.message || '').toLowerCase();
+        
         if (errorMessage.includes('api has not been used') || errorMessage.includes('is disabled')) {
              specificMessage = "The Google Calendar API is not enabled for your project. Please enable it in your Google Cloud Console.";
+        } else if (reason === 'forbidden' || errorMessage.includes('insufficient permission') || errorMessage.includes('required scopes')) {
+            specificMessage = "Insufficient Permission. The application needs additional permissions to access this resource. Please re-authenticate.";
         } else {
             specificMessage = "You do not have permission to access this resource. Please check your Google Calendar sharing settings.";
         }

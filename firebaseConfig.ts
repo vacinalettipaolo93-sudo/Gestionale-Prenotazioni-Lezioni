@@ -1,4 +1,5 @@
 
+
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { 
@@ -20,7 +21,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 
 // --- CONFIGURAZIONE FIREBASE ---
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyBs_cE6smOR1qvSpoc24kDY4uTRtQclPdQ",
   authDomain: "gestionale-prenotazioni-lezio.firebaseapp.com",
   databaseURL: "https://gestionale-prenotazioni-lezio-default-rtdb.firebaseio.com",
