@@ -1,5 +1,5 @@
 
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/onCall");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {google} = require("googleapis");
@@ -167,8 +167,9 @@ exports.getGoogleCalendarList = onCall({
         
         const res = await calendar.calendarList.list({
             maxResults: 250,
-            fields: 'items(id,summary,accessRole)',
-            minAccessRole: 'reader'
+            fields: 'items(id,summary,accessRole,primary)',
+            showHidden: true, // Crucial for some accounts where the primary calendar might be hidden
+            // minAccessRole is removed to be less restrictive
         });
         
         const calendars = (res.data && res.data.items) ? res.data.items : [];

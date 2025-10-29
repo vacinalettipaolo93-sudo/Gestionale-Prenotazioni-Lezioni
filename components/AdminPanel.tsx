@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { WorkingHours, DateOverrides, Sport, LessonType, LessonOption, Location, ConsultantInfo } from '../types';
 import { XIcon, PlusIcon, TrashIcon, CameraIcon, EmailIcon, ArrowLeftOnRectangleIcon } from './icons';
@@ -8,6 +9,7 @@ interface GoogleCalendar {
     id: string;
     summary: string;
     accessRole: 'owner' | 'writer' | 'reader' | 'freeBusyReader';
+    primary?: boolean;
 }
 
 interface GoogleUser {
@@ -947,6 +949,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         className="h-5 w-5 text-primary focus:ring-primary border-neutral-200 rounded bg-neutral-50"
                                     />
                                     <span className="ml-3 text-neutral-600">{cal.summary}</span>
+                                    { cal.primary && <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full font-semibold">Primario</span> }
                                     { (cal.accessRole !== 'owner' && cal.accessRole !== 'writer') && 
                                         <span className="ml-auto text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">Sola lettura</span> 
                                     }
