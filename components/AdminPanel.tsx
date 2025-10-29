@@ -75,7 +75,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [localAdminEmails, setLocalAdminEmails] = useState<string[]>(initialAdminEmails);
     const [newAdminEmail, setNewAdminEmail] = useState('');
     
-    const [activeTab, setActiveTab] = useState('profile');
+    const [activeTab, setActiveTab] = useState('integrations');
 
     const [newOverrideDate, setNewOverrideDate] = useState('');
     const [newOverrideStart, setNewOverrideStart] = useState('09:00');
@@ -121,9 +121,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             return;
         }
         const provider = new GoogleAuthProvider();
-        // THIS IS THE CRUCIAL FIX: Explicitly request the necessary permissions (scopes).
+        // Request the necessary permissions (scopes).
         provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
         provider.addScope("https://www.googleapis.com/auth/calendar.events");
+        
+        // CRUCIAL FIX: Force the consent screen to appear every time.
+        // This resolves stubborn issues where Google caches old/incomplete permissions.
+        provider.setCustomParameters({
+            prompt: 'consent',
+        });
 
         try {
             const result = await signInWithPopup(auth, provider);
@@ -202,7 +208,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             const data = result?.data as { calendars?: GoogleCalendar[] };
             setAllGoogleCalendars(data?.calendars || []);
             setCalendarsFetched(true);
-        } catch (error: any) {
+        } catch (error: any)
+        {
             console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
             const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
             
@@ -958,25 +965,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     ) : (calendarsFetched && allGoogleCalendars.length === 0) ? (
                         <div className="p-4 bg-amber-900/10 border border-amber-400/30 text-amber-400 rounded-md text-sm">
                             <p className="font-bold mb-2 text-amber-200">Nessun calendario trovato</p>
-                            <p className="mb-3">Questo può succedere per due motivi principali:</p>
-                            <ul className="list-disc list-inside space-y-2 mb-4">
-                                <li>Il tuo account Google ({user?.email}) non ha calendari.</li>
+                            <p className="mb-3">Anche dopo aver dato il consenso, a volte i calendari non appaiono. Ecco le cause più comuni e le soluzioni:</p>
+                            <ul className="list-disc list-inside space-y-3 mb-4">
                                 <li>
-                                    <span className="font-semibold">Causa più probabile:</span> Se la tua app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto alla lista degli "Utenti di test".
+                                    <span className="font-semibold">Problema di "Cache" dei Permessi:</span> Google potrebbe usare un'autorizzazione vecchia.
+                                    <br />
+                                    <span className="font-bold text-amber-200">Soluzione:</span> Prova a fare <strong onClick={() => handleGoogleDisconnect()} className="underline cursor-pointer">Logout</strong> e a ricollegarti. Il sistema ora forza una nuova richiesta di permessi ogni volta per risolvere questo problema.
                                 </li>
-                            </ul>
-                            <p className="mb-3">
-                                Per risolvere, vai allo Schermo di Consenso OAuth del tuo progetto e aggiungi il tuo indirizzo email.
-                            </p>
-                            <div className="flex items-center gap-4">
-                                <a 
+                                <li>
+                                    <span className="font-semibold">App in modalità "Test":</span> Se l'app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto agli "Utenti di test".
+                                    <a 
                                     href={consentScreenUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="bg-blue-500/80 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600"
-                                >
-                                    Vai allo Schermo di Consenso
-                                </a>
+                                    className="block text-blue-400 hover:underline mt-1"
+                                    >
+                                        → Vai allo Schermo di Consenso per verificare
+                                    </a>
+                                </li>
+                                <li>
+                                    <span className="font-semibold">Nessun Calendario Condiviso:</span> È raro, ma è possibile che il tuo calendario principale non sia accessibile tramite API.
+                                    <a 
+                                    href="https://calendar.google.com/calendar/r/settings"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block text-blue-400 hover:underline mt-1"
+                                    >
+                                        → Controlla le impostazioni del tuo calendario
+                                    </a>
+                                </li>
+                            </ul>
+                            
+                            <div className="flex items-center gap-4 mt-4">
                                 <button 
                                     onClick={fetchCalendars} 
                                     className="bg-amber-500/20 text-amber-200 font-semibold py-2 px-4 rounded-md hover:bg-amber-500/40"
