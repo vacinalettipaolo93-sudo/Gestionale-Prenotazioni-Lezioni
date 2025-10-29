@@ -165,12 +165,9 @@ exports.getGoogleCalendarList = onCall({
         const authClient = getAuthenticatedClientFromToken(googleAuthToken);
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
-        const res = await calendar.calendarList.list({
-            maxResults: 250,
-            fields: 'items(id,summary,accessRole,primary)',
-            showHidden: true, // Crucial for some accounts where the primary calendar might be hidden
-            // minAccessRole is removed to be less restrictive
-        });
+        // Using the simplest possible call to avoid parameter-related issues.
+        // This requests all calendars the user has any level of access to.
+        const res = await calendar.calendarList.list({});
         
         const calendars = (res.data && res.data.items) ? res.data.items : [];
         return { calendars };
