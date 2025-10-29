@@ -111,6 +111,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     useEffect(() => setLocalAdminEmails(initialAdminEmails), [initialAdminEmails]);
 
 
+    const handleGoogleDisconnect = useCallback(async () => {
+        if (!auth) return;
+        try {
+            await signOut(auth);
+            localStorage.removeItem('google_access_token');
+            setAllGoogleCalendars([]);
+            setCalendarsFetched(false);
+            onGoogleLogout();
+            showToast('Logout effettuato.', 'success');
+        } catch (error: any) {
+            console.error("Errore durante il logout:", error);
+            showToast(`Errore di logout: ${error.message}`, 'error');
+        }
+    }, [onGoogleLogout, showToast]);
+
     const fetchCalendars = useCallback(async () => {
         const googleAccessToken = localStorage.getItem('google_access_token');
         if (!googleAccessToken || !getGoogleCalendarList) {
@@ -128,7 +143,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
             setCalendarError(`Caricamento fallito: ${detailedMessage}`);
 
-            if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes('token') || error.message.toLowerCase().includes('credentials')))) {
+            const errorMessage = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+            if (error.code === 'unauthenticated' || errorMessage.includes('token') || errorMessage.includes('credentials')) {
                 handleGoogleDisconnect();
                 showToast('Sessione Google scaduta o non valida. Riconnettiti.', 'error');
             }
@@ -136,7 +152,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             setIsLoadingCalendars(false);
             setCalendarsFetched(true);
         }
-    }, [showToast]);
+    }, [showToast, handleGoogleDisconnect]);
 
     useEffect(() => {
         if(isAdmin) {
@@ -195,21 +211,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         
             setLoginError(message);
             showToast(message, 'error'); // Keep toast as secondary notification
-        }
-    };
-
-    const handleGoogleDisconnect = async () => {
-        if (!auth) return;
-        try {
-            await signOut(auth);
-            localStorage.removeItem('google_access_token');
-            setAllGoogleCalendars([]);
-            setCalendarsFetched(false);
-            onGoogleLogout();
-            showToast('Logout effettuato.', 'success');
-        } catch (error: any) {
-            console.error("Errore durante il logout:", error);
-            showToast(`Errore di logout: ${error.message}`, 'error');
         }
     };
 
@@ -414,9 +415,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const uniqueLocations = useMemo(() => {
         const locationsMap = new Map<string, Location>();
-        sportsData.forEach(sport => {
-            sport.lessonTypes.forEach(lt => {
-                lt.locations.forEach(loc => {
+        (sportsData || []).forEach(sport => {
+            (sport.lessonTypes || []).forEach(lt => {
+                (lt.locations || []).forEach(loc => {
                     if (loc.name && !locationsMap.has(loc.name)) {
                         locationsMap.set(loc.name, loc);
                     }
@@ -771,7 +772,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         
                         {/* Lesson Types */}
                         <div className="space-y-4 pl-4">
-                            {sport.lessonTypes.map((lt, ltIndex) => (
+                            {(sport.lessonTypes || []).map((lt, ltIndex) => (
                                 <div key={lt.id} className="p-3 bg-neutral-100 rounded-md border border-neutral-200">
                                     <div className="flex justify-between items-start">
                                         <div className="flex-1">
@@ -784,7 +785,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {/* Options */}
                                     <div className="mt-2 pl-4">
                                         <h4 className="text-sm font-medium text-neutral-400">Opzioni Durata</h4>
-                                        {lt.options.map((opt, optIndex) => (
+                                        {(lt.options || []).map((opt, optIndex) => (
                                             <div key={opt.id} className="flex items-center gap-2 mt-1">
                                                 <input type="number" step="15" value={opt.duration} onChange={e => handleUpdateOption(sportIndex, ltIndex, optIndex, e.target.value)} className="w-20 p-1 bg-neutral-50 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
                                                 <span className="text-neutral-600">minuti</span>
@@ -797,7 +798,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {/* Locations */}
                                     <div className="mt-2 pl-4">
                                         <h4 className="text-sm font-medium text-neutral-400">Sedi</h4>
-                                        {lt.locations.map((loc, locIndex) => (
+                                        {(lt.locations || []).map((loc, locIndex) => (
                                             <div key={loc.id} className="mt-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <input type="text" value={loc.name} onChange={e => handleUpdateLocation(sportIndex, ltIndex, locIndex, 'name', e.target.value)} className="p-1 bg-neutral-50 border border-neutral-200 rounded-md flex-1 focus:ring-primary focus:border-primary text-neutral-800" placeholder="Nome Sede"/>
