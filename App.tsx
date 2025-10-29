@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import EventTypeSelection from './components/EventTypeSelection';
 import BookingPage from './components/BookingPage';
 import ConfirmationPage from './components/ConfirmationPage';
@@ -17,6 +17,17 @@ interface GoogleUser {
     name: string;
     picture: string;
 }
+
+// Moved AdminModal outside of the App component to prevent it from being re-created on every render.
+// This preserves the state of AdminPanel and prevents the freezing issue.
+const AdminModal = (props: any) => ( // Using any for simplicity as it just passes props through
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div className="bg-white w-full h-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <AdminPanel {...props} />
+        </div>
+    </div>
+);
+
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'selection' | 'booking' | 'confirmation'>('selection');
@@ -43,28 +54,24 @@ function App() {
   // UI State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-  };
+  }, []);
 
   // Listen to Firebase Auth state changes for session persistence
   useEffect(() => {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
         if (user && user.email && user.displayName) {
-            // A user is logged in with Firebase. We can update the UI.
-            // The google access token for APIs should be in localStorage.
-            // If it's not, API calls will fail, which is handled gracefully in the components.
             setGoogleUser({
                 email: user.email,
                 name: user.displayName,
                 picture: user.photoURL || '',
             });
         } else {
-            // No user is logged in with Firebase.
             setGoogleUser(null);
             setIsAdmin(false);
-            localStorage.removeItem('google_access_token'); // Clean up just in case
+            localStorage.removeItem('google_access_token');
         }
     });
     return () => unsubscribe();
@@ -106,8 +113,6 @@ function App() {
         setAdminEmails(data.adminEmails || []);
       } else {
         console.log("Configuration document not found. This will be created on first admin login.");
-        // Set local state to defaults, but don't try to write to Firestore here.
-        // The first admin login will trigger the creation of the document via a Firebase Function.
         setSportsData(INITIAL_SPORTS_DATA);
         setConsultantInfo(INITIAL_CONSULTANT_INFO);
         setWorkingHours(INITIAL_WORKING_HOURS);
@@ -122,7 +127,7 @@ function App() {
     });
 
     return () => unsubscribe();
-  }, [isLoadingConfig, configDocRef]);
+  }, [isLoadingConfig, configDocRef, showToast]);
   
   // --- NAVIGATION HANDLERS ---
   const handleSelectionComplete = (selection: LessonSelection) => {
@@ -149,7 +154,7 @@ function App() {
   };
     
   // --- SECURE SAVE HANDLERS (via Firebase Functions) ---
-  const callUpdateConfig = async (configPayload: Partial<AppConfig>) => {
+  const callUpdateConfig = useCallback(async (configPayload: Partial<AppConfig>) => {
     const googleAccessToken = localStorage.getItem('google_access_token');
     if (!googleAccessToken) {
         showToast('Devi essere loggato per salvare le modifiche.', 'error');
@@ -160,9 +165,9 @@ function App() {
         throw new Error("Update function not available");
     }
     await updateConfig({ googleAuthToken: googleAccessToken, configPayload });
-  };
+  }, [showToast]);
 
-  const handleSaveWorkingHours = async (newHours: WorkingHours) => {
+  const handleSaveWorkingHours = useCallback(async (newHours: WorkingHours) => {
     try {
       await callUpdateConfig({ workingHours: newHours });
       showToast('Orari di lavoro aggiornati!', 'success');
@@ -170,9 +175,9 @@ function App() {
       console.error("Error saving working hours:", error);
       showToast("Errore nel salvataggio degli orari.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
   
-  const handleSaveDateOverrides = async (newOverrides: DateOverrides) => {
+  const handleSaveDateOverrides = useCallback(async (newOverrides: DateOverrides) => {
     try {
       await callUpdateConfig({ dateOverrides: newOverrides });
       showToast('Eccezioni del calendario aggiornate!', 'success');
@@ -180,9 +185,9 @@ function App() {
       console.error("Error saving date overrides:", error);
       showToast("Errore nel salvataggio delle eccezioni.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
   
-  const handleSaveSportsData = async (newSportsData: Sport[]) => {
+  const handleSaveSportsData = useCallback(async (newSportsData: Sport[]) => {
     try {
       await callUpdateConfig({ sportsData: newSportsData });
       showToast('Dati di sport, lezioni e sedi aggiornati!', 'success');
@@ -190,9 +195,9 @@ function App() {
       console.error("Error saving sports data:", error);
       showToast("Errore nel salvataggio dei dati sport.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
   
-  const handleSaveConsultantInfo = async (newInfo: ConsultantInfo) => {
+  const handleSaveConsultantInfo = useCallback(async (newInfo: ConsultantInfo) => {
     try {
       await callUpdateConfig({ consultantInfo: newInfo });
       showToast('Informazioni del profilo aggiornate!', 'success');
@@ -200,9 +205,9 @@ function App() {
       console.error("Error saving consultant info:", error);
       showToast("Errore nel salvataggio del profilo.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
 
-  const handleSaveSlotInterval = async (newInterval: number) => {
+  const handleSaveSlotInterval = useCallback(async (newInterval: number) => {
     try {
       await callUpdateConfig({ slotInterval: newInterval });
       showToast('Intervallo di prenotazione aggiornato!', 'success');
@@ -210,9 +215,9 @@ function App() {
       console.error("Error saving slot interval:", error);
       showToast("Errore nel salvataggio dell'intervallo.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
 
-  const handleSaveMinimumNoticeHours = async (newNotice: number) => {
+  const handleSaveMinimumNoticeHours = useCallback(async (newNotice: number) => {
     try {
       await callUpdateConfig({ minimumNoticeHours: newNotice });
       showToast('Preavviso minimo di prenotazione aggiornato!', 'success');
@@ -220,9 +225,9 @@ function App() {
       console.error("Error saving minimum notice:", error);
       showToast("Errore nel salvataggio del preavviso minimo.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
 
-  const handleSaveSelectedCalendars = async (calendarIds: string[]) => {
+  const handleSaveSelectedCalendars = useCallback(async (calendarIds: string[]) => {
     try {
       await callUpdateConfig({ googleCalendarIds: calendarIds });
       showToast('Calendari per la sincronizzazione aggiornati!', 'success');
@@ -230,9 +235,9 @@ function App() {
       console.error("Error saving selected calendars:", error);
       showToast("Errore nel salvataggio dei calendari selezionati.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
 
-  const handleSaveAdminEmails = async (newEmails: string[]) => {
+  const handleSaveAdminEmails = useCallback(async (newEmails: string[]) => {
     try {
       await callUpdateConfig({ adminEmails: newEmails });
       showToast('Lista amministratori aggiornata!', 'success');
@@ -240,21 +245,15 @@ function App() {
       console.error("Error saving admin emails:", error);
       showToast("Errore nel salvataggio della lista amministratori.", 'error');
     }
-  };
+  }, [callUpdateConfig, showToast]);
 
-   const handleGoogleLogin = async (user: GoogleUser, token: string) => {
+   const handleGoogleLogin = useCallback(async (user: GoogleUser, token: string) => {
     setGoogleUser(user);
-    // The onSnapshot listener will tell us if admins are already configured.
-    // We only try to set the initial admin if the list is empty.
     if (adminEmails.length === 0) {
         if (token && setInitialAdmin) {
             try {
-                // Call the Firebase Function to set the initial admin.
-                // This is safe to call even if another user is racing to become admin,
-                // as the function is idempotent if admins already exist.
                 await setInitialAdmin({ googleAuthToken: token });
                 showToast(`Benvenuto! ${user.name} è stato impostato come primo amministratore.`, 'success');
-                // The onSnapshot listener will soon receive the update and grant admin access.
             } catch (error: any) {
                 console.error("Error setting first admin:", error);
                 const message = error?.details?.serverMessage || "Errore nell'impostazione del primo amministratore.";
@@ -262,13 +261,16 @@ function App() {
             }
         }
     }
-   }
+   }, [adminEmails, showToast]);
 
-   const handleGoogleLogout = () => {
+   const handleGoogleLogout = useCallback(() => {
     setGoogleUser(null);
     setIsAdmin(false);
-    // The actual sign-out and token removal happens in AdminPanel
-   }
+   }, []);
+
+   const onExitAdminView = useCallback(() => {
+    setShowAdminModal(false);
+   }, []);
   
   const renderLoading = () => (
     <div className="flex justify-center items-center h-[600px]">
@@ -343,16 +345,17 @@ function App() {
         </div>
     );
   }
-  
-  const AdminModal = () => (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-        <div className="bg-white w-full h-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-            <AdminPanel 
+
+  return (
+    <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {backgroundSport && <BackgroundIcon sport={backgroundSport} />}
+      {showAdminModal && <AdminModal 
               user={googleUser}
               isAdmin={isAdmin}
               onGoogleLogin={handleGoogleLogin}
               onGoogleLogout={handleGoogleLogout}
-              onExitAdminView={() => setShowAdminModal(false)}
+              onExitAdminView={onExitAdminView}
               initialSportsData={sportsData}
               initialWorkingHours={workingHours}
               initialDateOverrides={dateOverrides}
@@ -370,16 +373,7 @@ function App() {
               onSaveSelectedCalendars={handleSaveSelectedCalendars}
               onSaveAdminEmails={handleSaveAdminEmails}
               showToast={showToast}
-            />
-        </div>
-    </div>
-  )
-
-  return (
-    <div className="bg-neutral-100 min-h-screen font-sans text-neutral-600">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      {backgroundSport && <BackgroundIcon sport={backgroundSport} />}
-      {showAdminModal && <AdminModal />}
+            />}
 
       <header className="bg-neutral-50 border-b border-neutral-200 relative z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
