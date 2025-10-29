@@ -121,7 +121,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             return;
         }
         const provider = new GoogleAuthProvider();
-        provider.addScope("https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events");
+        // THIS IS THE CRUCIAL FIX: Explicitly request the necessary permissions (scopes).
+        provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+        provider.addScope("https://www.googleapis.com/auth/calendar.events");
 
         try {
             const result = await signInWithPopup(auth, provider);
@@ -184,7 +186,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const handleReAuth = useCallback(async () => {
         await handleGoogleDisconnect(true); // Silently log out first
         handleGoogleConnect(); // Then trigger a new login
-    }, [handleGoogleDisconnect, handleGoogleConnect]);
+    }, [handleGoogleDisconnect]);
 
     const fetchCalendars = useCallback(async () => {
         const googleAccessToken = localStorage.getItem('google_access_token');
