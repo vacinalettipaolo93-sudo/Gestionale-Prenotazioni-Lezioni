@@ -146,10 +146,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
             const data = result?.data as { calendars?: GoogleCalendar[] };
             setAllGoogleCalendars(data?.calendars || []);
+            setCalendarsFetched(true);
         } catch (error: any) {
             console.error("ERRORE CRITICO nel caricamento dei calendari:", error.message);
             const detailedMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore sconosciuto.";
             setCalendarError(`Caricamento fallito: ${detailedMessage}`);
+            setCalendarsFetched(false); // Ensure we can retry fetching
 
             const errorMessage = typeof error.message === 'string' ? error.message.toLowerCase() : '';
             if (error.code === 'unauthenticated' || errorMessage.includes('token') || errorMessage.includes('credentials')) {
@@ -158,7 +160,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             }
         } finally {
             setIsLoadingCalendars(false);
-            setCalendarsFetched(true);
         }
     }, [showToast, handleGoogleDisconnect]);
 
@@ -874,8 +875,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                          <div className="flex items-center justify-center p-4">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                          </div>
-                    ): calendarError ? (
-                        <p className="text-red-500">{calendarError}</p>
+                    ) : calendarError ? (
+                        <div className="p-4 bg-red-900/10 border border-red-400/30 text-red-400 rounded-md text-sm">
+                            <p className="font-bold mb-2">Impossibile Caricare i Calendari</p>
+                            <p>{calendarError}</p>
+                            {calendarError.includes("API is not enabled") && (
+                                <a 
+                                    href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="font-bold text-red-300 hover:underline mt-2 inline-block"
+                                >
+                                    Abilita l'API di Google Calendar qui
+                                </a>
+                            )}
+                            <div className="mt-4">
+                                <button 
+                                    onClick={fetchCalendars} 
+                                    className="bg-red-500/20 text-red-200 font-semibold py-1 px-3 rounded-md hover:bg-red-500/40"
+                                >
+                                    Riprova
+                                </button>
+                            </div>
+                        </div>
                     ) : allGoogleCalendars.length > 0 ? (
                         <>
                          <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-md max-h-96 overflow-y-auto">

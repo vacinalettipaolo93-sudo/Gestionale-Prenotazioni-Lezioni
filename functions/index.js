@@ -39,7 +39,15 @@ const handleApiError = (error, functionName) => {
     }
 
     let httpsErrorCode = 'internal';
-    if (statusCode === 401 || statusCode === 403) {
+    if (statusCode === 403) {
+        httpsErrorCode = 'permission-denied';
+        const errorMessage = (error.response?.data?.error?.message || '').toLowerCase();
+        if (errorMessage.includes('api has not been used') || errorMessage.includes('is disabled')) {
+             specificMessage = "The Google Calendar API is not enabled for your project. Please enable it in your Google Cloud Console.";
+        } else {
+            specificMessage = "You do not have permission to access this resource. Please check your Google Calendar sharing settings.";
+        }
+    } else if (statusCode === 401) {
         httpsErrorCode = 'unauthenticated';
         specificMessage = "Invalid or expired Google credentials. Please re-authenticate.";
     } else if (statusCode === 404) {
