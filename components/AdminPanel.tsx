@@ -115,6 +115,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         if (!auth) return;
         try {
             await signOut(auth);
+            // The onAuthStateChanged listener in App.tsx will handle the primary state cleanup.
+            // We can also clear things here for a faster UI response.
             localStorage.removeItem('google_access_token');
             setAllGoogleCalendars([]);
             setCalendarsFetched(false);
@@ -122,7 +124,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             showToast('Logout effettuato.', 'success');
         } catch (error: any) {
             console.error("Errore durante il logout:", error);
-            showToast(`Errore di logout: ${error.message}`, 'error');
+            showToast(`Errore di logout: ${error.message}. Tento un logout forzato.`, 'error');
+            // --- Fallback for when signOut fails ---
+            // Manually clear everything to get the user out of the stuck state.
+            localStorage.removeItem('google_access_token');
+            onGoogleLogout(); // This will reset the state in App.tsx
+            setAllGoogleCalendars([]);
+            setCalendarsFetched(false);
         }
     }, [onGoogleLogout, showToast]);
 
