@@ -93,6 +93,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const [calendarError, setCalendarError] = useState<string | null>(null);
     const [calendarsFetched, setCalendarsFetched] = useState(false);
     const [showReauthPrompt, setShowReauthPrompt] = useState(false);
+    const [calendarDebugInfo, setCalendarDebugInfo] = useState<any>(null);
 
 
     const isBackendConfigured = !!localStorage.getItem('google_access_token');
@@ -205,10 +206,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         setIsLoadingCalendars(true);
         setCalendarError(null);
         setShowReauthPrompt(false);
+        setCalendarDebugInfo(null);
         try {
             const result = await getGoogleCalendarList({ googleAuthToken: googleAccessToken });
-            const data = result?.data as { calendars?: GoogleCalendar[] };
+            const data = result?.data as { calendars?: GoogleCalendar[], debugInfo?: any };
             setAllGoogleCalendars(data?.calendars || []);
+            setCalendarDebugInfo(data?.debugInfo || null);
             setCalendarsFetched(true);
         } catch (error: any)
         {
@@ -222,7 +225,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             } else {
                  setCalendarError(`Caricamento fallito: ${detailedMessage}`);
             }
-            
+            setCalendarDebugInfo({ error: true, message: error.message, details: error.details });
             setCalendarsFetched(true); // We consider it "fetched" even if it's an error, to show the error message.
 
             if (error.code === 'unauthenticated' || errorMessage.includes('token') || errorMessage.includes('credentials')) {
@@ -971,31 +974,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <p className="mb-3">Anche dopo aver dato il consenso, a volte i calendari non appaiono. Ecco le cause più comuni e le soluzioni:</p>
                             <ul className="list-disc list-inside space-y-3 mb-4">
                                 <li>
-                                    <span className="font-semibold">Problema di "Cache" dei Permessi:</span> Google potrebbe usare un'autorizzazione vecchia.
-                                    <br />
-                                    <span className="font-bold text-amber-200">Soluzione:</span> Prova a fare <strong onClick={() => handleGoogleDisconnect()} className="underline cursor-pointer">Logout</strong> e a ricollegarti. Il sistema ora forza una nuova richiesta di permessi ogni volta per risolvere questo problema.
-                                </li>
-                                <li>
-                                    <span className="font-semibold">App in modalità "Test":</span> Se l'app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto agli "Utenti di test".
+                                    <span className="font-semibold">App in modalità "Test":</span> Se l'app è in modalità "Test" su Google Cloud, il tuo indirizzo email deve essere aggiunto agli "Utenti di test". Questa è la causa più probabile.
                                     <a 
                                     href={consentScreenUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block text-blue-400 hover:underline mt-1"
                                     >
-                                        → Vai allo Schermo di Consenso per verificare
+                                        → Vai allo Schermo di Consenso per verificare e aggiungere il tuo utente
                                     </a>
                                 </li>
                                 <li>
-                                    <span className="font-semibold">Nessun Calendario Condiviso:</span> È raro, ma è possibile che il tuo calendario principale non sia accessibile tramite API.
-                                    <a 
-                                    href="https://calendar.google.com/calendar/r/settings"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block text-blue-400 hover:underline mt-1"
-                                    >
-                                        → Controlla le impostazioni del tuo calendario
-                                    </a>
+                                    <span className="font-semibold">Problema di "Cache" dei Permessi:</span> Google potrebbe usare un'autorizzazione vecchia.
+                                    <br />
+                                    <span className="font-bold text-amber-200">Soluzione:</span> Prova a fare <strong onClick={() => handleGoogleDisconnect()} className="underline cursor-pointer">Logout</strong> e a ricollegarti. Il sistema ora forza una nuova richiesta di permessi ogni volta.
                                 </li>
                             </ul>
                             
@@ -1007,6 +999,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     Ricarica Lista
                                 </button>
                             </div>
+                            {calendarDebugInfo && (
+                                <div className="mt-6 p-4 bg-neutral-800 text-neutral-300 rounded-lg text-left">
+                                    <h4 className="font-semibold text-neutral-100 mb-2">Dati Diagnostici dalla Risposta API</h4>
+                                    <p className="text-xs text-neutral-400 mb-2">
+                                        Questi dati mostrano la risposta ricevuta dai server di Google. Se 'statusCode' è 200 e 'itemCount' è 0, significa che la connessione ha avuto successo ma Google non ha restituito calendari, confermando un problema di configurazione dell'account o del progetto Google Cloud.
+                                    </p>
+                                    <pre className="text-xs whitespace-pre-wrap bg-neutral-900 p-2 rounded">
+                                        {JSON.stringify(calendarDebugInfo, null, 2)}
+                                    </pre>
+                                </div>
+                            )}
                         </div>
                     ) : null}
                  </div>

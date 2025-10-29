@@ -165,12 +165,18 @@ exports.getGoogleCalendarList = onCall({
         const authClient = getAuthenticatedClientFromToken(googleAuthToken);
         const calendar = google.calendar({ version: "v3", auth: authClient });
         
-        // Using the simplest possible call to avoid parameter-related issues.
-        // This requests all calendars the user has any level of access to.
         const res = await calendar.calendarList.list({});
         
         const calendars = (res.data && res.data.items) ? res.data.items : [];
-        return { calendars };
+        const debugInfo = {
+            statusCode: res.status,
+            statusText: res.statusText,
+            itemCount: calendars.length,
+            hasData: !!res.data,
+            hasItems: !!(res.data && res.data.items),
+        };
+
+        return { calendars, debugInfo };
 
     } catch (error) {
         handleApiError(error, 'getGoogleCalendarList');
