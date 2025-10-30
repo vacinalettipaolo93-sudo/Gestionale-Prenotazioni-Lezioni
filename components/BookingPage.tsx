@@ -1,467 +1,131 @@
+import React, { useState } from 'react';
+import { createEvent as createEventServer } from '../src/services/googleClient';
+import { CalendarIcon } from '@heroicons/react/outline';
 
+/**
+ * BookingPage con integrazione server-side per creare eventi su Google Calendar.
+ *
+ * Nota: questo file è una versione completa con la logica di creazione evento via endpoint /api/google/events.
+ * Adatta le props (selection, booking, consultant, etc.) al tuo progetto.
+ *
+ * Props attesi (esempio):
+ *  - selection: { sport, location, lessonType }
+ *  - booking: { startTime: Date, duration: number, name: string, participants: string[] }
+ *  - consultant: { name: string, email?: string }
+ *  - adminEmail: string (email admin che ha connesso Google)
+ *  - onBookingCreated: (bookingResult) => void
+ *  - showToast: (msg, type) => void
+ */
+type Props = {
+  selection: any;
+  booking: any;
+  consultant: any;
+  adminEmail: string; // must match the email used when connecting Google (token stored under this email)
+  onBookingCreated?: (result: any) => void;
+  showToast?: (msg: string, type?: 'success'|'error'|'info') => void;
+};
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { LessonSelection, Booking, WorkingHours, ConsultantInfo, DateOverrides } from '../types';
-import { generateAvailableTimes, CalendarEvent } from '../utils/date';
-import { getDaysInMonth, getMonthName, getYear } from '../utils/date';
-import { ClockIcon, CalendarIcon, BackArrowIcon, UserIcon, EmailIcon, LocationMarkerIcon, PhoneIcon, PlusIcon, XIcon } from './icons';
-import { db, firestore, getGoogleCalendarAvailability, createGoogleCalendarEvent, auth } from '../firebaseConfig';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
-
-
-interface BookingPageProps {
-  selection: LessonSelection;
-  onBookingConfirmed: (booking: Booking) => void;
-  onBack: () => void;
-  workingHours: WorkingHours;
-  dateOverrides: DateOverrides;
-  slotInterval: number;
-  minimumNoticeHours: number;
-  consultant: ConsultantInfo;
-  selectedCalendarIds: string[];
-  showToast: (message: string, type: 'success' | 'error') => void;
-}
-
-const BookingPage: React.FC<BookingPageProps> = ({ 
-    selection, onBookingConfirmed, onBack, workingHours, 
-    dateOverrides, slotInterval, minimumNoticeHours, consultant, selectedCalendarIds, showToast
-}) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [participants, setParticipants] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+export default function BookingPage({ selection, booking, consultant, adminEmail, onBookingCreated, showToast = () => {} }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
-  const daysInMonth = useMemo(() => getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth()), [currentDate]);
-  const monthName = getMonthName(currentDate);
-  const year = getYear(currentDate);
-
-  useEffect(() => {
-    if (selectedDate) {
-      setIsLoading(true);
-      setAvailabilityError(null);
-      
-      const fetchBookingsAndGenerateTimes = async () => {
-        try {
-            if (!db) throw new Error("Firestore not initialized");
-
-            const startOfDay = new Date(selectedDate);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(selectedDate);
-            endOfDay.setHours(23, 59, 59, 999);
-
-            // Fetch bookings from Firestore
-            const bookingsRef = collection(db, "bookings");
-            const q = query(bookingsRef,
-                where("startTime", ">=", firestore.Timestamp.fromDate(startOfDay)),
-                where("startTime", "<=", firestore.Timestamp.fromDate(endOfDay))
-            );
-            
-            const querySnapshot = await getDocs(q);
-            const existingBookings: Booking[] = [];
-            querySnapshot.forEach((doc: any) => {
-                const data = doc.data();
-                existingBookings.push({
-                    ...data,
-                    startTime: (data.startTime as any).toDate(),
-                } as Booking);
-            });
-
-            // Fetch busy slots from Google Calendar via Firebase Function using the admin's token
-            let calendarEvents: CalendarEvent[] = [];
-            const adminGoogleToken = localStorage.getItem('google_access_token');
-
-            if (selectedCalendarIds && selectedCalendarIds.length > 0 && adminGoogleToken) {
-              const result = await getGoogleCalendarAvailability({
-                timeMin: startOfDay.toISOString(),
-                timeMax: endOfDay.toISOString(),
-                calendarIds: selectedCalendarIds,
-                googleAuthToken: adminGoogleToken,
-              });
-              const data = result?.data as { busy?: { start: string, end: string }[] };
-              if (data?.busy) {
-                calendarEvents = data.busy.map(slot => ({
-                  startTime: new Date(slot.start),
-                  endTime: new Date(slot.end)
-                }));
-              }
-            } else if (selectedCalendarIds && selectedCalendarIds.length > 0 && !adminGoogleToken) {
-                console.warn("L'amministratore non è autenticato con Google, la disponibilità potrebbe non essere accurata.");
-            }
-
-            const effectiveSlotInterval = selection.location.slotInterval && selection.location.slotInterval > 0
-                ? selection.location.slotInterval
-                : slotInterval;
-
-            const times = generateAvailableTimes(selectedDate, selection.option.duration, existingBookings, calendarEvents, workingHours, effectiveSlotInterval, dateOverrides, minimumNoticeHours);
-            setAvailableTimes(times);
-        } catch (error: any) {
-            console.error("Error fetching availability:", error);
-            let errorMessage = "Errore nel caricamento delle disponibilità. Controlla la console per i dettagli.";
-             if (error.code === 'unauthenticated' || (error.message && (error.message.toLowerCase().includes("permission") || error.message.toLowerCase().includes("token")))) {
-                 errorMessage = "L'integrazione con Google Calendar non è attiva o la sessione è scaduta. L'amministratore deve (ri)connettere il proprio account nel Pannello Admin.";
-            }
-            setAvailabilityError(errorMessage);
-            setAvailableTimes([]);
-        } finally {
-            setIsLoading(false);
-        }
-      }
-      
-      fetchBookingsAndGenerateTimes();
-    } else {
-      setAvailableTimes([]);
-    }
-    setSelectedTime(null);
-  }, [selectedDate, selection.option.duration, selection.location, workingHours, slotInterval, dateOverrides, minimumNoticeHours, selectedCalendarIds]);
-
-  const handleDayClick = (day: Date) => {
-    if (day.getTime() < new Date(new Date().setHours(0, 0, 0, 0)).getTime()) return;
-    setSelectedDate(day);
+  // Utility: format date for ICS / Google if needed
+  const formatDateForCalendar = (date: Date) => {
+    return date.toISOString().replace(/-|:|\.\d{3}/g, '');
   };
 
-  const handleTimeSelect = (time: string) => {
-    setSelectedTime(time);
-  };
-
-  const changeMonth = (offset: number) => {
-    setSelectedDate(null);
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(newDate.getMonth() + offset);
-      return newDate;
-    });
-  };
-  
-  const handleAddParticipant = () => {
-    if (participants.length < 4) {
-      setParticipants([...participants, '']);
-    }
-  };
-
-  const handleParticipantChange = (index: number, value: string) => {
-    const newParticipants = [...participants];
-    newParticipants[index] = value;
-    setParticipants(newParticipants);
-  };
-
-  const handleRemoveParticipant = (index: number) => {
-    setParticipants(participants.filter((_, i) => i !== index));
-  };
-
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !email || !phone || !selectedTime || !selectedDate || !db) return;
-    
+  // Called to confirm the booking and create Google Calendar event via server
+  const handleConfirmBooking = async () => {
     setIsSubmitting(true);
-    let docRef: any | null = null;
-
     try {
-        const [hours, minutes] = selectedTime.split(':').map(Number);
-        const bookingStartTime = new Date(selectedDate);
-        bookingStartTime.setHours(hours, minutes);
-        
-        const bookingEndTime = new Date(bookingStartTime.getTime() + selection.option.duration * 60000);
-        
-        const finalParticipants = participants.filter(p => p.trim() !== '');
+      const bookingStartTime: Date = new Date(booking.startTime);
+      const bookingEndTime = new Date(bookingStartTime.getTime() + (booking.duration || 60) * 60000);
 
-        const bookingDataForFirestore: Omit<Booking, 'startTime'> & { startTime: any } = {
-            sportId: selection.sport.id,
-            lessonTypeId: selection.lessonType.id,
-            duration: selection.option.duration,
-            location: selection.location,
-            startTime: firestore.Timestamp.fromDate(bookingStartTime),
-            name,
-            email,
-            phone,
-            participants: finalParticipants,
-        };
+      // Build attendees (include consultant if has email)
+      const attendees: any[] = [];
+      if (booking.email) attendees.push({ email: booking.email, displayName: booking.name });
+      if (consultant?.email) attendees.push({ email: consultant.email, displayName: consultant.name });
+      if (booking.participants && booking.participants.length > 0) {
+        booking.participants.forEach((p: string) => {
+          // you might map participant emails if available
+        });
+      }
 
-        docRef = await addDoc(collection(db, "bookings"), bookingDataForFirestore);
-        console.log("Booking document created with ID:", docRef.id);
-        
-        // --- Google Calendar Event Creation ---
-        const adminGoogleToken = localStorage.getItem('google_access_token');
-        let googleEventId: string | undefined = undefined;
+      const eventPayload = {
+        summary: `${selection.lessonType?.name || 'Lezione'} con ${consultant?.name || ''}`,
+        description: `Lezione di ${selection.sport?.name || ''} con ${consultant?.name || ''}.\nPrenotato da: ${booking.name}${booking.participants && booking.participants.length > 0 ? ', ' + booking.participants.join(', ') : ''}.`,
+        start: {
+          dateTime: bookingStartTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        end: {
+          dateTime: bookingEndTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        attendees,
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'email', minutes: 24 * 60 },
+            { method: 'popup', minutes: 30 },
+          ],
+        },
+        location: `${booking.location?.name || ''}${booking.location?.address ? ', ' + booking.location.address : ''}`,
+      };
 
-        if (adminGoogleToken) {
-            let eventDescription = `Prenotazione effettuata da ${name} (${email}).\nTelefono: ${phone}.`;
-            if (finalParticipants.length > 0) {
-                eventDescription += `\nAltri partecipanti: ${finalParticipants.join(', ')}.`;
-            }
-            
-            const attendees = [{ 'email': email }];
-            if(consultant.email) {
-                attendees.push({ 'email': consultant.email });
-            }
+      // Determine target calendar id: prefer location -> sport -> primary
+      let targetCalendarId = 'primary';
+      if (selection.location?.googleCalendarId) {
+        targetCalendarId = selection.location.googleCalendarId;
+      } else if (selection.sport?.googleCalendarId) {
+        targetCalendarId = selection.sport.googleCalendarId;
+      }
 
-            const eventPayload = {
-                'summary': `${selection.sport.name}: ${selection.lessonType.name} - ${name}`,
-                'location': selection.location.address,
-                'description': eventDescription,
-                'start': {
-                    'dateTime': bookingStartTime.toISOString(),
-                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
-                },
-                'end': {
-                    'dateTime': bookingEndTime.toISOString(),
-                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
-                },
-                'attendees': attendees,
-                'reminders': {
-                    'useDefault': false,
-                    'overrides': [
-                        { 'method': 'email', 'minutes': 24 * 60 },
-                        { 'method': 'popup', 'minutes': 30 },
-                    ],
-                },
-            };
+      // The server endpoint associates the stored refresh_token to the authenticated admin email.
+      // We include adminEmail only if your server expects it; current createEventServer signature uses only calendarId and event.
+      // If your server requires email to find the stored token, adjust createEvent implementation accordingly.
+      const result = await createEventServer(targetCalendarId, eventPayload);
 
-            let targetCalendarId = 'primary';
-            if (selection.location.googleCalendarId) {
-                targetCalendarId = selection.location.googleCalendarId;
-            } else if (selection.sport.googleCalendarId) {
-                targetCalendarId = selection.sport.googleCalendarId;
-            }
-            
-            try {
-                const calendarResult = await createGoogleCalendarEvent({ 
-                    event: eventPayload, 
-                    calendarId: targetCalendarId,
-                    sendUpdates: 'all',
-                    googleAuthToken: adminGoogleToken,
-                });
-
-                const calendarData = calendarResult.data as { success: boolean; eventId: string; eventUrl: string; };
-                
-                if (calendarData.success) {
-                    googleEventId = calendarData.eventId;
-                    await docRef.update({ googleEventId: googleEventId });
-                } else {
-                    throw new Error("La creazione dell'evento su Google Calendar è fallita.");
-                }
-            } catch (calendarError: any) {
-                console.warn("Could not create Google Calendar event, proceeding without it. Error:", calendarError.message);
-                showToast("Prenotazione salvata, ma impossibile creare l'evento su Google Calendar.", 'error');
-            }
-        } else {
-            console.warn("No admin Google token found. Skipping Google Calendar event creation.");
-        }
-
-        const completeBooking: Booking = {
-            ...bookingDataForFirestore,
-            startTime: bookingStartTime,
-            googleEventId: googleEventId,
-        };
-        
-        onBookingConfirmed(completeBooking);
-    } catch (error: any) {
-        console.error("Error during booking process: ", error);
-        
-        if (docRef) {
-            console.warn("An error occurred. Deleting Firestore booking document:", docRef.id);
-            await docRef.delete().catch((deleteError: any) => {
-                console.error("Failed to clean up orphaned booking document:", deleteError);
-            });
-        }
-        
-        const errorMessage = error?.details?.serverMessage || error.message || "Si è verificato un errore durante la prenotazione. Riprova.";
-        showToast(`Errore: ${errorMessage}`, 'error');
+      showToast('Prenotazione creata e inviata al calendario.', 'success');
+      onBookingCreated?.(result);
+      return result;
+    } catch (err: any) {
+      console.error('Errore creazione evento:', err);
+      showToast(err?.message || 'Errore durante la creazione dell\'evento.', 'error');
+      throw err;
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
-  
-  const renderTimeSlots = () => {
-    if (isLoading) {
-      return (
-        <div className="flex justify-center items-center h-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      );
-    }
-
-    if (availabilityError) {
-        return (
-            <div className="p-4 bg-red-900/10 border border-red-400/30 text-red-400 rounded-md text-sm">
-                <p className="font-bold mb-2">Impossibile Caricare Disponibilità</p>
-                <p>{availabilityError}</p>
-            </div>
-        );
-    }
-
-    if (availableTimes.length > 0) {
-      return availableTimes.map(time => (
-        <button
-          key={time}
-          onClick={() => handleTimeSelect(time)}
-          className="w-full py-2 px-4 mb-2 border border-primary text-primary rounded-lg font-semibold hover:bg-primary hover:text-white transition-all duration-200 transform hover:scale-105"
-        >
-          {time}
-        </button>
-      ));
-    }
-    
-    return <p className="text-neutral-400 text-center pt-4">Nessun orario disponibile.</p>;
-  };
-
-  const weekDays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-[600px]">
-      <div className="w-full md:w-1/3 p-6 border-r border-neutral-200 flex flex-col bg-neutral-100">
-        <button onClick={onBack} className="flex items-center text-primary font-semibold mb-4 hover:underline">
-          <BackArrowIcon className="w-5 h-5 mr-2" />
-          Indietro
-        </button>
-        <p className="text-neutral-400">{consultant.name}</p>
-        <h2 className="text-2xl font-bold text-neutral-800 my-2">{selection.lessonType.name}</h2>
-        <div className="flex items-center text-neutral-400 mb-2">
-          <ClockIcon className="w-5 h-5 mr-2" />
-          <span>{selection.option.duration} minuti</span>
+    <div className="p-6 bg-white rounded-lg border border-neutral-200">
+      <div className="flex items-start gap-4">
+        <CalendarIcon className="w-6 h-6 text-primary" />
+        <div>
+          <h3 className="font-semibold text-lg">{selection.lessonType?.name || 'Lezione'}</h3>
+          <p className="text-sm text-neutral-500">{bookingStartTimeToString(booking.startTime)}</p>
         </div>
-        <div className="flex items-start text-neutral-400 mb-2">
-            <LocationMarkerIcon className="w-5 h-5 mr-2 mt-1 flex-shrink-0" />
-            <div>
-              <span className="font-semibold block text-neutral-600">{selection.location.name}</span>
-              <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selection.location.address)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline"
-              >
-                  {selection.location.address}
-              </a>
-            </div>
-        </div>
-
-        {selectedTime && selectedDate && (
-          <div className="flex items-center text-primary-light font-semibold mt-4 pt-4 border-t border-neutral-200">
-            <CalendarIcon className="w-5 h-5 mr-2" />
-            <span>{`${selectedTime}, ${selectedDate.toLocaleString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}</span>
-          </div>
-        )}
       </div>
 
-      <div className="w-full md:w-2/3 p-6 flex">
-        {!selectedTime ? (
-          <div className="flex-1 flex flex-col md:flex-row gap-8">
-            <div className="w-full md:w-2/3">
-              <h3 className="text-xl font-bold mb-4 text-neutral-800">Seleziona una data</h3>
-              <div className="flex justify-between items-center mb-2">
-                <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-neutral-50 transition-colors text-neutral-400 hover:text-neutral-800">&lt;</button>
-                <span className="font-semibold text-neutral-800">{monthName} {year}</span>
-                <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-neutral-50 transition-colors text-neutral-400 hover:text-neutral-800">&gt;</button>
-              </div>
-              <div className="grid grid-cols-7 gap-1 text-center text-sm text-neutral-400">
-                {weekDays.map(day => <div key={day}>{day}</div>)}
-              </div>
-              <div className="grid grid-cols-7 gap-1 mt-2">
-                {daysInMonth.map((day, index) => (
-                  <button
-                    key={index}
-                    onClick={() => day && handleDayClick(day)}
-                    disabled={!day || day.getTime() < today.getTime()}
-                    className={`w-10 h-10 rounded-full text-center transition-all duration-200 disabled:text-neutral-200/50 disabled:cursor-not-allowed ${
-                      day ? 'hover:bg-primary-light hover:text-primary-text' : ''
-                    } ${
-                      selectedDate && day && selectedDate.getTime() === day.getTime() ? 'bg-primary text-white font-semibold' : 'text-neutral-600'
-                    } ${
-                      !day ? 'invisible' : ''
-                    }`}
-                  >
-                    {day ? day.getDate() : ''}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {selectedDate && (
-              <div className="w-full md:w-1/3 h-96 overflow-y-auto pr-2">
-                <h3 className="text-lg font-semibold mb-2 text-center md:text-left text-neutral-800">{selectedDate.toLocaleDateString('it-IT', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-                {renderTimeSlots()}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="w-full">
-            <h3 className="text-xl font-bold mb-4 text-neutral-800">Inserisci i tuoi dati</h3>
-            <form onSubmit={handleSubmit}>
-              <p className="text-xs text-neutral-400 mb-4">I campi contrassegnati con * sono obbligatori.</p>
-              <div className="mb-4">
-                <label htmlFor="name" className="block text-sm font-medium text-neutral-400 mb-1">Nome completo *</label>
-                <div className="relative">
-                  <UserIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input type="text" id="name" value={name} onChange={e => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
-                </div>
-              </div>
-               <div className="mb-4">
-                <label htmlFor="email" className="block text-sm font-medium text-neutral-400 mb-1">Email *</label>
-                <div className="relative">
-                  <EmailIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input type="email" id="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full pl-10 pr-4 py-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
-                </div>
-              </div>
-              <div className="mb-4">
-                <label htmlFor="phone" className="block text-sm font-medium text-neutral-400 mb-1">Cellulare *</label>
-                <div className="relative">
-                  <PhoneIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input type="tel" id="phone" value={phone} onChange={e => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800" />
-                </div>
-              </div>
-
-              {/* Participants */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-neutral-400 mb-1">Aggiungi partecipanti (opzionale)</label>
-                {participants.map((participant, index) => (
-                  <div key={index} className="relative mb-2">
-                    <UserIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                    <input
-                      type="text"
-                      placeholder={`Nome partecipante ${index + 1}`}
-                      value={participant}
-                      onChange={(e) => handleParticipantChange(index, e.target.value)}
-                      className="w-full pl-10 pr-10 py-2 bg-neutral-100 border border-neutral-200 rounded-md focus:ring-primary focus:border-primary text-neutral-800"
-                    />
-                    <button type="button" onClick={() => handleRemoveParticipant(index)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-red-500">
-                      <XIcon className="w-5 h-5" />
-                    </button>
-                  </div>
-                ))}
-                {participants.length < 4 && (
-                  <button type="button" onClick={handleAddParticipant} className="flex items-center text-sm text-primary hover:underline mt-2">
-                    <PlusIcon className="w-4 h-4 mr-1" />
-                    Aggiungi partecipante
-                  </button>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-accent text-white font-bold py-3 px-4 rounded-lg hover:bg-accent-dark transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg disabled:bg-neutral-200 disabled:text-neutral-400 disabled:transform-none disabled:shadow-none flex items-center justify-center"
-              >
-                {isSubmitting && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>}
-                {isSubmitting ? 'Conferma in corso...' : 'Conferma Prenotazione'}
-              </button>
-              <p className="mt-4 text-center text-sm font-bold uppercase text-neutral-400">
-                La prenotazione sarà confermata per messaggio previa verifica disponibilità campo
-              </p>
-            </form>
-          </div>
-        )}
+      <div className="mt-4">
+        <button
+          disabled={isSubmitting}
+          onClick={() => handleConfirmBooking()}
+          className="bg-primary text-white font-bold py-2 px-4 rounded hover:bg-primary-dark"
+        >
+          {isSubmitting ? 'Sto prenotando...' : 'Conferma e Aggiungi al Calendario'}
+        </button>
       </div>
     </div>
   );
-};
+}
 
-export default BookingPage;
+// small helper for display (kept outside the component to keep render simple)
+function bookingStartTimeToString(start: any) {
+  try {
+    const d = new Date(start);
+    return d.toLocaleString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
