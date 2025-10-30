@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createEvent as createEventServer } from '../src/services/googleClient';
-import { CalendarIcon } from '@heroicons/react/outline';
+import { CalendarIcon } from './icons';
 
 /**
  * BookingPage con integrazione server-side per creare eventi su Google Calendar.
@@ -69,63 +69,3 @@ export default function BookingPage({ selection, booking, consultant, adminEmail
             { method: 'popup', minutes: 30 },
           ],
         },
-        location: `${booking.location?.name || ''}${booking.location?.address ? ', ' + booking.location.address : ''}`,
-      };
-
-      // Determine target calendar id: prefer location -> sport -> primary
-      let targetCalendarId = 'primary';
-      if (selection.location?.googleCalendarId) {
-        targetCalendarId = selection.location.googleCalendarId;
-      } else if (selection.sport?.googleCalendarId) {
-        targetCalendarId = selection.sport.googleCalendarId;
-      }
-
-      // The server endpoint associates the stored refresh_token to the authenticated admin email.
-      // We include adminEmail only if your server expects it; current createEventServer signature uses only calendarId and event.
-      // If your server requires email to find the stored token, adjust createEvent implementation accordingly.
-      const result = await createEventServer(targetCalendarId, eventPayload);
-
-      showToast('Prenotazione creata e inviata al calendario.', 'success');
-      onBookingCreated?.(result);
-      return result;
-    } catch (err: any) {
-      console.error('Errore creazione evento:', err);
-      showToast(err?.message || 'Errore durante la creazione dell\'evento.', 'error');
-      throw err;
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="p-6 bg-white rounded-lg border border-neutral-200">
-      <div className="flex items-start gap-4">
-        <CalendarIcon className="w-6 h-6 text-primary" />
-        <div>
-          <h3 className="font-semibold text-lg">{selection.lessonType?.name || 'Lezione'}</h3>
-          <p className="text-sm text-neutral-500">{bookingStartTimeToString(booking.startTime)}</p>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <button
-          disabled={isSubmitting}
-          onClick={() => handleConfirmBooking()}
-          className="bg-primary text-white font-bold py-2 px-4 rounded hover:bg-primary-dark"
-        >
-          {isSubmitting ? 'Sto prenotando...' : 'Conferma e Aggiungi al Calendario'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// small helper for display (kept outside the component to keep render simple)
-function bookingStartTimeToString(start: any) {
-  try {
-    const d = new Date(start);
-    return d.toLocaleString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-}
