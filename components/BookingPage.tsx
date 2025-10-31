@@ -3,6 +3,8 @@ import type { LessonSelection, Booking, WorkingHours, DateOverrides, ConsultantI
 import { CalendarIcon, ClockIcon, BackArrowIcon, UserIcon, EmailIcon, PhoneIcon, PlusIcon, XIcon } from './icons';
 import { generateAvailableTimes } from '../utils/date';
 
+const MAX_PARTICIPANTS = 10;
+
 interface BookingPageProps {
   selection: LessonSelection;
   onBookingConfirmed: (booking: Booking) => void;
@@ -71,11 +73,13 @@ const BookingPage: React.FC<BookingPageProps> = ({
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
     
+    // TODO: Fetch existing bookings from Firestore and Google Calendar events
+    // to properly check slot availability and prevent double bookings
     return generateAvailableTimes(
       selectedDate,
       selection.option.duration,
-      [], // existingBookings - empty for now, can be fetched from Firestore
-      [], // calendarEvents - empty for now, can be fetched from Google Calendar
+      [], // TODO: Replace with actual bookings from Firestore
+      [], // TODO: Replace with actual calendar events from Google Calendar API
       workingHours,
       slotInterval,
       dateOverrides,
@@ -84,7 +88,7 @@ const BookingPage: React.FC<BookingPageProps> = ({
   }, [selectedDate, selection.option.duration, workingHours, slotInterval, dateOverrides, minimumNoticeHours]);
 
   const handleAddParticipant = () => {
-    if (newParticipant.trim() && participants.length < 10) {
+    if (newParticipant.trim() && participants.length < MAX_PARTICIPANTS) {
       setParticipants([...participants, newParticipant.trim()]);
       setNewParticipant('');
     }
