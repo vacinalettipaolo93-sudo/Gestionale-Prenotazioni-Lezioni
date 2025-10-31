@@ -282,7 +282,12 @@ const BookingPage: React.FC<BookingPageProps> = ({
                   type="text"
                   value={newParticipant}
                   onChange={(e) => setNewParticipant(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddParticipant())}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddParticipant();
+                    }
+                  }}
                   className="flex-1 p-3 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   placeholder="Nome partecipante"
                 />
